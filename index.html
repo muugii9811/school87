@@ -12,8 +12,8 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
 
@@ -286,13 +286,13 @@
     <!-- Teacher form -->
     <div id="form-teacher" class="space-y-3">
       <div>
-        <label style="font-size:13px;font-weight:800;color:#374151;display:block;margin-bottom:6px;">Нэвтрэх нэр</label>
-        <input type="text" id="teacher-username" placeholder=""
+        <label style="font-size:13px;font-weight:800;color:#374151;display:block;margin-bottom:6px;">Нэвтрэх код</label>
+        <input type="text" id="teacher-username" placeholder="Жишээ: 10А0001"
           class="input-field" style="text-align:center;font-family:monospace;letter-spacing:0.1em;font-size:20px!important;font-weight:700;">
       </div>
       <div>
         <label style="font-size:13px;font-weight:800;color:#374151;display:block;margin-bottom:6px;">Нууц үг</label>
-        <input type="password" id="teacher-password" placeholder=""
+        <input type="password" id="teacher-password" placeholder="••••••"
           class="input-field" onkeydown="if(event.key==='Enter') handleLogin()">
       </div>
       <div id="login-error" class="hidden" style="padding:12px;background:#fef2f2;border:2px solid #fecaca;border-radius:12px;color:#dc2626;font-size:13px;font-weight:700;"></div>
@@ -303,13 +303,14 @@
     <!-- Student form -->
     <div id="form-student" class="space-y-3 hidden">
       <div>
-        <label style="font-size:13px;font-weight:800;color:#374151;display:block;margin-bottom:6px;">Нэвтрэх нэр (Анги 4 оронтой тоо бичих)</label>
-        <input type="text" id="student-username" placeholder=""
+        <label style="font-size:13px;font-weight:800;color:#374151;display:block;margin-bottom:6px;">Нэвтрэх код (РД дугаар)</label>
+        <input type="text" id="student-username" placeholder="Жишээ: 10А0001"
           class="input-field" style="text-align:center;font-family:monospace;letter-spacing:0.1em;font-size:20px!important;font-weight:700;">
+        <p style="font-size:11px;color:#9ca3af;margin-top:4px;">Анги + Бүлэг + РД дугаар (жш: 10А0001)</p>
       </div>
       <div>
         <label style="font-size:13px;font-weight:800;color:#374151;display:block;margin-bottom:6px;">Нууц үг</label>
-        <input type="password" id="student-password" placeholder=""
+        <input type="password" id="student-password" placeholder="••••••"
           class="input-field" onkeydown="if(event.key==='Enter') handleLogin()">
       </div>
       <div id="login-error-student" class="hidden" style="padding:12px;background:#fef2f2;border:2px solid #fecaca;border-radius:12px;color:#dc2626;font-size:13px;font-weight:700;"></div>
@@ -356,9 +357,9 @@
         <span class="icon">➕</span>
         <span>Сорил</span>
       </button>
-      <button class="nav-tab" id="nav-classes" onclick="navigate('uc-classes')">
-        <span class="icon">🏫</span>
-        <span>Ангиуд</span>
+      <button class="nav-tab" id="nav-subjects" onclick="navigate('subjects')">
+        <span class="icon">📚</span>
+        <span>Судлагдахуун</span>
       </button>
       <button class="nav-tab" id="nav-users" onclick="navigate('manage-users')">
         <span class="icon">👥</span>
@@ -403,353 +404,38 @@
 </div>
 
 <script>
-// ============ FIREBASE CLOUD STORAGE ============
-// 🔥 Нэгэн зэрэг 1000+ сурагч сорил өгч болно
-// Шийдэл: Submission бүр өөрийн тусдаа Firestore документ
-// → Race condition байхгүй, scale хязгааргүй
+// ============ FIREBASE CONFIG ============
+const STORAGE_KEY = 'school87_data_v6';
+const FB_CONFIG_KEY = 'school87_firebase_v1';
 
-const STORAGE_KEY  = 'school87_data_v6';
-const FB_CFG_KEY   = 'school87_firebase_cfg_v1';
-
-// Firestore collections
-const C_CONFIG = 'school87_config';   // Announcements, classes, subjects...
-const C_USERS  = 'school87_users';    // Нэг хэрэглэгч = нэг document
-const C_EXAMS  = 'school87_exams';    // Нэг шалгалт = нэг document
-const C_SUBS   = 'school87_subs';     // ⚡ Нэг сурагчийн хариулт = нэг document (race-condition-free!)
-
-let db = null;
 let syncStatus = 'idle';
 let lastSyncTime = null;
-let saveTimeout = null;
-let subListener = null;   // Real-time listener for teachers
+let syncTimeout = null;
+let pollInterval = null;
 
-// ── Firebase init ──
-function getFBConfig() {
-  try { return JSON.parse(localStorage.getItem(FB_CFG_KEY)); } catch { return null; }
+// Firebase instances
+let fbApp = null;
+let db = null;
+let submissionsUnsubscribe = null;
+
+function getFirebaseConfig() {
+  try { const s = localStorage.getItem(FB_CONFIG_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
 }
-function storeFBConfig(cfg) { localStorage.setItem(FB_CFG_KEY, JSON.stringify(cfg)); }
+function saveFirebaseConfig(cfg) {
+  try { localStorage.setItem(FB_CONFIG_KEY, JSON.stringify(cfg)); } catch {}
+}
 
 function initFirebase(cfg) {
   try {
-    if (!cfg || !cfg.projectId || !cfg.apiKey) return false;
-    if (firebase.apps.length) {
-      firebase.apps.forEach(app => app.delete());
-    }
-    firebase.initializeApp(cfg);
-    db = firebase.firestore();
+    if (fbApp) { try { fbApp.delete(); } catch {} }
+    fbApp = firebase.initializeApp(cfg, 'school87-' + Date.now());
+    db = fbApp.firestore();
+    db.settings({ experimentalForceLongPolling: false });
     return true;
-  } catch(e) { console.error('Firebase init:', e); db = null; return false; }
+  } catch(e) { console.error('Firebase init error:', e); return false; }
 }
 
-// ── Local storage fallback ──
-function saveLocal() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch(e) {}
-}
-function loadLocal() {
-  try { const s = localStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
-}
-
-// ── Sync status ──
-function updateSyncStatus(status) {
-  syncStatus = status;
-  const el = document.getElementById('sync-indicator');
-  if (!el) return;
-  const map = {
-    syncing: ['🔄','Синхрончилж...','rgba(255,255,255,0.6)'],
-    synced:  ['✅','Хадгалагдсан','rgba(255,255,255,0.85)'],
-    error:   ['⚠️','Алдаа','#fca5a5'],
-    offline: ['📱','Локал','rgba(255,255,255,0.6)'],
-    idle:    ['💾','Бэлэн','rgba(255,255,255,0.6)']
-  };
-  const [icon, text, color] = map[status] || map.idle;
-  el.innerHTML = `<span style="color:${color};font-size:11px;font-weight:700;cursor:pointer;" onclick="showSyncSettings()">${icon} ${text}</span>`;
-}
-
-// ── Load all data from Firestore ──
-async function loadFromCloud() {
-  if (!db) return null;
-  try {
-    updateSyncStatus('syncing');
-    const [cfgSnap, usersSnap, examsSnap, subsSnap] = await Promise.all([
-      db.collection(C_CONFIG).doc('main').get(),
-      db.collection(C_USERS).get(),
-      db.collection(C_EXAMS).get(),
-      db.collection(C_SUBS).get(),
-    ]);
-    const cfg  = cfgSnap.exists ? cfgSnap.data() : {};
-    const users = usersSnap.docs.map(d => ({...d.data()}));
-    const exams = examsSnap.docs.map(d => ({...d.data()}));
-    const submissions = subsSnap.docs.map(d => d.data());
-    updateSyncStatus('synced');
-    lastSyncTime = new Date();
-    return { ...cfg, users, exams, submissions, currentUser: null, activityLog: [] };
-  } catch(e) {
-    console.error('Load cloud error:', e);
-    updateSyncStatus('error');
-    return null;
-  }
-}
-
-// ── Save config + users + exams (admin/teacher operations, low concurrency) ──
-async function saveToCloud() {
-  if (!db) { saveLocal(); return; }
-  updateSyncStatus('syncing');
-  try {
-    // Use batched writes for atomicity
-    const batch = db.batch();
-
-    // 1) Config document
-    batch.set(db.collection(C_CONFIG).doc('main'), {
-      announcements: data.announcements || [],
-      classes:       data.classes       || [],
-      subjects:      data.subjects      || [],
-      posters:       data.posters       || [],
-      ads:           data.ads           || [],
-      sentAnalyses:  data.sentAnalyses  || [],
-      updatedAt:     new Date().toISOString()
-    });
-
-    // 2) Users — each user = its own document
-    (data.users || []).forEach(u => {
-      batch.set(db.collection(C_USERS).doc(String(u.id)), u);
-    });
-
-    // 3) Exams — each exam = its own document
-    (data.exams || []).forEach(e => {
-      batch.set(db.collection(C_EXAMS).doc(String(e.id)), e);
-    });
-
-    // NOTE: Submissions are saved separately per student (see saveSubmissionCloud)
-    // They are NOT included in this batch to preserve concurrency safety
-
-    await batch.commit();
-    saveLocal();
-    updateSyncStatus('synced');
-    lastSyncTime = new Date();
-  } catch(e) {
-    console.error('Save cloud error:', e);
-    updateSyncStatus('error');
-    saveLocal();
-  }
-}
-
-// ⚡ KEY FUNCTION: Race-condition-free submission write
-// 1000 сурагч нэгэн зэрэг submit хийхэд ч алдагдахгүй
-// Учир нь: studentId + examId → unique document path
-async function saveSubmissionCloud(sub) {
-  if (!db) return false;
-  try {
-    // Document ID: "{studentId}_{examId}" → globally unique per student per exam
-    const docId = `${sub.studentId}_${sub.examId}`;
-    await db.collection(C_SUBS).doc(docId).set(sub);
-    return true;
-  } catch(e) {
-    console.error('Save submission error:', e);
-    return false;
-  }
-}
-
-// Delete exam + its submissions from Firestore
-async function deleteExamCloud(examId) {
-  if (!db) return;
-  try {
-    await db.collection(C_EXAMS).doc(String(examId)).delete();
-    const snap = await db.collection(C_SUBS).where('examId', '==', examId).get();
-    if (!snap.empty) {
-      const batch = db.batch();
-      snap.docs.forEach(d => batch.delete(d.ref));
-      await batch.commit();
-    }
-  } catch(e) { console.error('Delete exam cloud:', e); }
-}
-
-// Delete user from Firestore
-async function deleteUserCloud(userId) {
-  if (!db) return;
-  try { await db.collection(C_USERS).doc(String(userId)).delete(); } catch(e) {}
-}
-
-// Real-time listener: teacher sees submissions as students submit
-function startSubmissionListener(examId, onUpdate) {
-  if (!db) return;
-  if (subListener) { subListener(); subListener = null; }
-  subListener = db.collection(C_SUBS)
-    .where('examId', '==', examId)
-    .onSnapshot(snap => {
-      const subs = snap.docs.map(d => d.data());
-      // Merge into data.submissions
-      data.submissions = [
-        ...data.submissions.filter(s => s.examId !== examId),
-        ...subs
-      ];
-      if (onUpdate) onUpdate(subs);
-    }, err => console.error('Listener error:', err));
-}
-function stopSubmissionListener() {
-  if (subListener) { subListener(); subListener = null; }
-}
-
-// General saveData (debounced) — used by admin/teacher operations
-function saveData() {
-  saveLocal();
-  if (saveTimeout) clearTimeout(saveTimeout);
-  saveTimeout = setTimeout(() => saveToCloud(), 1200);
-}
-
-// ── Init ──
-async function initData() {
-  // 1) Local first (instant UI)
-  const local = loadLocal();
-  if (local && local.users && local.users.length > 0) {
-    data = local;
-    if (!data.activityLog) data.activityLog = [];
-    if (!data.posters)     data.posters     = [];
-    if (!data.ads)         data.ads         = [];
-    if (!data.subjects || !data.subjects.length) data.subjects = DEFAULT_DATA.subjects;
-  } else {
-    data = JSON.parse(JSON.stringify(DEFAULT_DATA));
-  }
-
-  // 2) Try Firebase
-  const fbCfg = getFBConfig();
-  if (!fbCfg || !fbCfg.projectId) {
-    updateSyncStatus('offline');
-    return; // Run with local/default data
-  }
-  if (!initFirebase(fbCfg)) { updateSyncStatus('error'); return; }
-
-  // 3) Load from Firestore
-  const cloud = await loadFromCloud();
-  if (cloud && cloud.users && cloud.users.length > 0) {
-    const preserved = data.currentUser;
-    data = cloud;
-    if (!data.activityLog) data.activityLog = [];
-    if (!data.posters)     data.posters     = [];
-    if (!data.ads)         data.ads         = [];
-    if (!data.subjects || !data.subjects.length) data.subjects = DEFAULT_DATA.subjects;
-    if (preserved) data.currentUser = preserved;
-    saveLocal();
-  } else if (cloud && (!cloud.users || cloud.users.length === 0)) {
-    // Firestore is empty → push default data up
-    await saveToCloud();
-  }
-}
-
-// ── Login page Firebase status ──
-function updateLoginFbStatus() {
-  const cfg = getFBConfig();
-  const btn = document.getElementById('login-fb-btn');
-  if (!btn) return;
-  if (cfg && cfg.projectId) {
-    btn.innerHTML = `✅ Firebase холбогдсон — ${cfg.projectId}`;
-    btn.style.background = 'rgba(16,185,129,0.3)';
-    btn.style.borderColor = 'rgba(16,185,129,0.6)';
-  } else {
-    btn.innerHTML = `🔥 Firebase тохируулах (заавал)`;
-    btn.style.background = 'rgba(239,68,68,0.25)';
-    btn.style.borderColor = 'rgba(239,68,68,0.5)';
-  }
-}
-
-function showLoginFirebaseSetup() {
-  const cfg = getFBConfig();
-  document.getElementById('modal-body').innerHTML = `
-    <h3 style="font-size:18px;font-weight:900;margin-bottom:4px;">🔥 Firebase тохируулах</h3>
-    <p style="font-size:12px;color:#6b7280;margin:0 0 14px;">1000+ нэгэн зэрэг сурагчийг дэмждэг cloud storage</p>
-
-    ${cfg && cfg.projectId ? `
-    <div style="background:#f0fdf4;border:2px solid #bbf7d0;border-radius:12px;padding:12px;margin-bottom:14px;">
-      <p style="font-size:12px;font-weight:700;color:#166534;margin:0 0 2px;">✅ Одоо холбогдсон:</p>
-      <p style="font-size:12px;font-family:monospace;color:#374151;margin:0;">${cfg.projectId}</p>
-    </div>` : `
-    <div style="background:#fff7ed;border:2px solid #fed7aa;border-radius:12px;padding:12px;margin-bottom:14px;font-size:12px;color:#9a3412;">
-      <strong>Firebase авах алхам:</strong><br>
-      1. console.firebase.google.com → шинэ project<br>
-      2. Firestore Database → Create → Test mode<br>
-      3. ⚙️ Project Settings → Your apps → &lt;/&gt; → Register<br>
-      4. apiKey, projectId, appId хуулж доор оруулна
-    </div>`}
-
-    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;">
-      <div>
-        <label style="font-size:12px;font-weight:800;color:#374151;display:block;margin-bottom:5px;">apiKey *</label>
-        <input id="lf-apikey" type="text" placeholder="AIzaSy..." value="${cfg?.apiKey||''}"
-          class="input-field" style="font-size:13px!important;font-family:monospace;">
-      </div>
-      <div>
-        <label style="font-size:12px;font-weight:800;color:#374151;display:block;margin-bottom:5px;">projectId *</label>
-        <input id="lf-project" type="text" placeholder="school87-xxxxx" value="${cfg?.projectId||''}"
-          class="input-field" style="font-size:13px!important;font-family:monospace;">
-      </div>
-      <div>
-        <label style="font-size:12px;font-weight:800;color:#374151;display:block;margin-bottom:5px;">appId</label>
-        <input id="lf-appid" type="text" placeholder="1:123456:web:abcdef" value="${cfg?.appId||''}"
-          class="input-field" style="font-size:13px!important;font-family:monospace;">
-      </div>
-    </div>
-
-    <div style="display:flex;flex-direction:column;gap:8px;">
-      <button onclick="saveLoginFirebase()" class="btn-primary" style="font-size:16px;">🔥 Хадгалж холбох</button>
-      ${cfg && cfg.projectId ? `
-      <button onclick="removeFirebase()" style="width:100%;padding:14px;background:#fef2f2;color:#dc2626;border:2px solid #fecaca;border-radius:12px;font-weight:800;cursor:pointer;">🔌 Firebase хасах</button>` : ''}
-      <button onclick="closeModal()" style="width:100%;padding:14px;background:#f3f4f6;border:none;border-radius:12px;font-weight:800;color:#374151;cursor:pointer;">Хаах</button>
-    </div>`;
-  document.getElementById('modal').classList.remove('hidden');
-}
-
-async function saveLoginFirebase() {
-  const apiKey    = (document.getElementById('lf-apikey').value  || '').trim();
-  const projectId = (document.getElementById('lf-project').value || '').trim();
-  const appId     = (document.getElementById('lf-appid').value   || '').trim();
-  if (!apiKey || !projectId) { alert('apiKey болон projectId заавал оруулна уу!'); return; }
-  const cfg = {
-    apiKey, projectId,
-    appId: appId || `1:000000000000:web:000000000000`,
-    authDomain:        `${projectId}.firebaseapp.com`,
-    storageBucket:     `${projectId}.appspot.com`,
-    messagingSenderId: '',
-  };
-  storeFBConfig(cfg);
-
-  const btn = document.getElementById('modal-body').querySelector('button');
-  if (btn) { btn.textContent = '⏳ Холбож байна...'; btn.disabled = true; }
-
-  if (!initFirebase(cfg)) {
-    alert('❌ Firebase холбоход алдаа гарлаа!\nApiKey болон projectId зөв эсэхийг шалгана уу.');
-    updateLoginFbStatus();
-    closeModal();
-    return;
-  }
-
-  updateSyncStatus('syncing');
-  const cloud = await loadFromCloud();
-  if (cloud && cloud.users && cloud.users.length > 0) {
-    data = cloud;
-    if (!data.activityLog) data.activityLog = [];
-    if (!data.posters)     data.posters     = [];
-    if (!data.ads)         data.ads         = [];
-    if (!data.subjects || !data.subjects.length) data.subjects = DEFAULT_DATA.subjects;
-    saveLocal();
-    alert('✅ Firebase холбогдлоо!\n\nFirestore-с өгөгдөл амжилттай татагдлаа.');
-  } else {
-    await saveToCloud();
-    alert('✅ Firebase холбогдлоо!\n\nОдоогийн өгөгдлийг Firestore-д хадгаллаа.');
-  }
-  updateLoginFbStatus();
-  closeModal();
-}
-
-function removeFirebase() {
-  if (!confirm('Firebase тохиргоог устгах уу? Локал горимд шилжинэ.')) return;
-  localStorage.removeItem(FB_CFG_KEY);
-  db = null;
-  updateLoginFbStatus();
-  updateSyncStatus('offline');
-  closeModal();
-}
-
-// Sync settings modal (from inside app header)
-function showSyncSettings() { showLoginFirebaseSetup(); }
+function isFirebaseReady() { return db !== null; }
 
 const GROUPS = ['А','Б','В','Г','Д','Е','Ж','З','И','К','Л','М'];
 const GRADES_NUM = Array.from({length:12}, (_,i) => i+1);
@@ -788,7 +474,6 @@ const DEFAULT_DATA = {
   submissions: [],
   activityLog: [],
   posters: [],
-  ads: [],
   sentAnalyses: [],
   subjects: [
     { id: 1, name: 'Математик', color: '#3b82f6', icon: '📐' },
@@ -803,6 +488,265 @@ const DEFAULT_DATA = {
 };
 
 let data = JSON.parse(JSON.stringify(DEFAULT_DATA));
+
+// ============ STORAGE (Firebase Firestore) ============
+function saveLocal() {
+  try {
+    const toSave = {...data};
+    delete toSave.currentUser; // don't persist session
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+  } catch(e) {}
+}
+function loadLocal() {
+  try { const s = localStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : null; } catch(e) { return null; }
+}
+
+function updateSyncStatus(status) {
+  syncStatus = status;
+  const indicator = document.getElementById('sync-indicator');
+  if (!indicator) return;
+  const map = {
+    syncing: ['🔄','Синхрончилж байна...','rgba(255,255,255,0.6)'],
+    synced:  ['✅','Хадгалагдсан','rgba(255,255,255,0.8)'],
+    error:   ['⚠️','Алдаа','#fca5a5'],
+    offline: ['📱','Firebase тохируулаагүй','rgba(255,255,255,0.6)'],
+    idle:    ['🔥','Firebase','rgba(255,255,255,0.8)']
+  };
+  const [icon, text, color] = map[status] || map.idle;
+  indicator.innerHTML = `<span style="color:${color};font-size:11px;font-weight:700;cursor:pointer;" onclick="showFirebaseSettings()">${icon} ${text}</span>`;
+}
+
+// Save config (users, exams, etc.) to Firestore
+async function saveToCloud() {
+  if (!isFirebaseReady()) { updateSyncStatus('offline'); return false; }
+  try {
+    updateSyncStatus('syncing');
+    const configData = {
+      users: data.users || [],
+      exams: data.exams || [],
+      announcements: data.announcements || [],
+      classes: data.classes || [],
+      subjects: data.subjects || [],
+      posters: data.posters || [],
+      sentAnalyses: data.sentAnalyses || [],
+      activityLog: (data.activityLog || []).slice(0, 200),
+      updatedAt: new Date().toISOString()
+    };
+    await db.collection('school87').doc('config').set(configData);
+    updateSyncStatus('synced');
+    lastSyncTime = new Date();
+    return true;
+  } catch(e) { console.error('Save error:', e); updateSyncStatus('error'); return false; }
+}
+
+// Load config from Firestore
+async function loadFromCloud() {
+  if (!isFirebaseReady()) return null;
+  try {
+    updateSyncStatus('syncing');
+    const doc = await db.collection('school87').doc('config').get();
+    updateSyncStatus('synced');
+    lastSyncTime = new Date();
+    return doc.exists ? doc.data() : null;
+  } catch(e) { console.error('Load error:', e); updateSyncStatus('error'); return null; }
+}
+
+// Save a single submission directly (no conflicts!)
+async function saveSubmissionToCloud(submission) {
+  if (!isFirebaseReady()) return false;
+  try {
+    await db.collection('school87').doc('submissions').collection('items')
+      .doc(String(submission.id)).set(submission);
+    return true;
+  } catch(e) { console.error('Submission save error:', e); return false; }
+}
+
+// Load all submissions from Firestore
+async function loadSubmissionsFromCloud() {
+  if (!isFirebaseReady()) return null;
+  try {
+    const snap = await db.collection('school87').doc('submissions').collection('items').get();
+    return snap.docs.map(d => d.data());
+  } catch(e) { console.error('Submissions load error:', e); return null; }
+}
+
+// Real-time listener for submissions
+function startSubmissionsListener() {
+  if (!isFirebaseReady()) return;
+  if (submissionsUnsubscribe) submissionsUnsubscribe();
+  submissionsUnsubscribe = db.collection('school87').doc('submissions').collection('items')
+    .onSnapshot(snap => {
+      data.submissions = snap.docs.map(d => d.data());
+      saveLocal();
+      // refresh view if admin/teacher is watching submissions
+      if (data.currentUser && (data.currentUser.role === 'admin' || data.currentUser.role === 'teacher')) {
+        const liveViews = ['dashboard', 'exam-detail', 'analytics', 'exam-analysis'];
+        if (liveViews.includes(currentView)) render();
+      }
+    }, err => console.error('Submissions listener error:', err));
+}
+
+function saveData() {
+  saveLocal();
+  if (syncTimeout) clearTimeout(syncTimeout);
+  syncTimeout = setTimeout(async () => {
+    if (isFirebaseReady()) await saveToCloud();
+    else updateSyncStatus('offline');
+  }, 800);
+}
+
+async function saveDataNow() {
+  saveLocal();
+  if (syncTimeout) clearTimeout(syncTimeout);
+  if (isFirebaseReady()) {
+    updateSyncStatus('syncing');
+    await saveToCloud();
+  } else {
+    updateSyncStatus('offline');
+  }
+}
+
+async function initData() {
+  // 1. Load from localStorage first (instant)
+  const localData = loadLocal();
+  if (localData && localData.users) {
+    data = { ...data, ...localData };
+    if (!data.activityLog) data.activityLog = [];
+  }
+
+  // 2. Try to init Firebase
+  const fbCfg = getFirebaseConfig();
+  if (fbCfg && fbCfg.apiKey && fbCfg.projectId) {
+    const ok = initFirebase(fbCfg);
+    if (ok) {
+      // 3. Load config from Firestore
+      const cloudData = await loadFromCloud();
+      if (cloudData && cloudData.users) {
+        const preservedUser = data.currentUser;
+        data = { ...data, ...cloudData };
+        if (!data.activityLog) data.activityLog = [];
+        if (preservedUser) data.currentUser = preservedUser;
+        saveLocal();
+      }
+      // 4. Load submissions
+      const subs = await loadSubmissionsFromCloud();
+      if (subs) { data.submissions = subs; saveLocal(); }
+      // 5. Start real-time listener for submissions
+      startSubmissionsListener();
+      updateSyncStatus('idle');
+    } else {
+      updateSyncStatus('error');
+    }
+  } else {
+    updateSyncStatus('offline');
+  }
+}
+
+function showFirebaseSettings() {
+  const cfg = getFirebaseConfig() || {};
+  const connected = isFirebaseReady();
+  document.getElementById('modal-body').innerHTML = `
+    <h3 style="font-size:18px;font-weight:900;margin-bottom:6px;">🔥 Firebase тохируулах</h3>
+    <p style="font-size:12px;color:#6b7280;margin:0 0 16px;">1000+ нэгэн зэрэг сурагчийг дэмждэг cloud storage</p>
+    ${connected ? `
+      <div style="background:#f0fdf4;border:2px solid #bbf7d0;border-radius:12px;padding:12px;margin-bottom:16px;">
+        <p style="font-size:12px;font-weight:800;color:#166534;margin:0 0 4px;">✅ Одоо холбогдсон:</p>
+        <p style="font-family:monospace;font-size:13px;color:#1e293b;margin:0;">${cfg.projectId}</p>
+      </div>` : `
+      <div style="background:#fef9c3;border:2px solid #fde68a;border-radius:12px;padding:12px;margin-bottom:16px;">
+        <p style="font-size:12px;font-weight:800;color:#92400e;margin:0;">⚠️ Firebase холбогдоогүй байна. Доор тохируулга оруулна уу.</p>
+      </div>`}
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">
+      <div>
+        <label style="font-size:12px;font-weight:800;color:#374151;display:block;margin-bottom:4px;">apiKey *</label>
+        <input id="fb-apikey" type="text" class="input-field" placeholder="AIzaSy..." value="${cfg.apiKey||''}">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:800;color:#374151;display:block;margin-bottom:4px;">projectId *</label>
+        <input id="fb-projectid" type="text" class="input-field" placeholder="school87-xxxxx" value="${cfg.projectId||''}">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:800;color:#374151;display:block;margin-bottom:4px;">appId</label>
+        <input id="fb-appid" type="text" class="input-field" placeholder="1:xxx:web:xxx" value="${cfg.appId||''}">
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <button onclick="saveFirebaseSettings()" class="btn-primary">🔥 Хадгалж холбох</button>
+      ${connected ? `<button onclick="migrateFromLocal()" class="btn-primary" style="background:linear-gradient(135deg,#10b981,#059669);">☁️ Локал өгөгдлийг Firebase-д байршуулах</button>` : ''}
+      ${connected ? `<button onclick="disconnectFirebase()" style="width:100%;padding:14px;background:#fef2f2;color:#dc2626;border:2px solid #fecaca;border-radius:12px;font-weight:800;cursor:pointer;">🔌 Firebase хасах</button>` : ''}
+    </div>
+    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:12px;margin-top:14px;font-size:12px;color:#1d4ed8;">
+      <strong>Firebase Console → Project Settings → Your apps</strong>-аас тохируулгыг авна уу.
+    </div>
+    <button onclick="closeModal()" style="width:100%;margin-top:12px;padding:14px;background:#f3f4f6;border:none;border-radius:12px;font-weight:800;color:#374151;cursor:pointer;">Хаах</button>`;
+  document.getElementById('modal').classList.remove('hidden');
+}
+
+async function saveFirebaseSettings() {
+  const apiKey = document.getElementById('fb-apikey').value.trim();
+  const projectId = document.getElementById('fb-projectid').value.trim();
+  const appId = document.getElementById('fb-appid').value.trim();
+  if (!apiKey || !projectId) { alert('apiKey болон projectId заавал оруулна уу!'); return; }
+  const cfg = {
+    apiKey, projectId,
+    appId: appId || undefined,
+    authDomain: `${projectId}.firebaseapp.com`,
+    storageBucket: `${projectId}.appspot.com`
+  };
+  saveFirebaseConfig(cfg);
+  const ok = initFirebase(cfg);
+  if (!ok) { alert('❌ Firebase холбогдоход алдаа гарлаа. Тохируулгаа шалгана уу.'); return; }
+  updateSyncStatus('syncing');
+  const cloudData = await loadFromCloud();
+  if (cloudData && cloudData.users) {
+    const preservedUser = data.currentUser;
+    data = { ...data, ...cloudData };
+    if (preservedUser) data.currentUser = preservedUser;
+  }
+  const subs = await loadSubmissionsFromCloud();
+  if (subs) data.submissions = subs;
+  startSubmissionsListener();
+  saveLocal();
+  updateSyncStatus('idle');
+  closeModal();
+  alert('✅ Firebase амжилттай холбогдлоо!\n\nОдоо ' + (data.submissions.length) + ' илгээлт татагдсан байна.');
+  render();
+}
+
+async function migrateFromLocal() {
+  if (!confirm('Локал өгөгдлийг Firebase-д байршуулах уу? Хуучин cloud өгөгдөл дарагдана.')) return;
+  closeModal();
+  updateSyncStatus('syncing');
+  // Upload config
+  await saveToCloud();
+  // Upload submissions
+  const subs = data.submissions || [];
+  let count = 0;
+  for (const sub of subs) {
+    await saveSubmissionToCloud(sub);
+    count++;
+  }
+  updateSyncStatus('synced');
+  alert(`✅ ${count} илгээлт байршуулагдлаа!`);
+}
+
+function disconnectFirebase() {
+  if (!confirm('Firebase-аас салгах уу?')) return;
+  localStorage.removeItem(FB_CONFIG_KEY);
+  if (submissionsUnsubscribe) { submissionsUnsubscribe(); submissionsUnsubscribe = null; }
+  try { if (fbApp) fbApp.delete(); } catch {}
+  fbApp = null; db = null;
+  updateSyncStatus('offline');
+  closeModal();
+}
+
+async function forceSync() {
+  await saveToCloud();
+  alert('Синхрончлогдлоо!');
+}
+
+// Alias for backward compat
+function showSyncSettings() { showFirebaseSettings(); }
 
 // ============ ACTIVITY LOG ============
 function logActivity(action, details) {
@@ -836,8 +780,8 @@ let logSearchQuery = '';
 document.addEventListener('DOMContentLoaded', async () => {
   const p1 = document.getElementById('prefix1');
   const p2 = document.getElementById('prefix2');
-  if (p1) GRADES_NUM.forEach(n => { p1.innerHTML += `<option value="${n}">${n}</option>`; });
-  if (p2) GROUPS.forEach(g => { p2.innerHTML += `<option value="${g}">${g}</option>`; });
+  GRADES_NUM.forEach(n => { p1.innerHTML += `<option value="${n}">${n}</option>`; });
+  GROUPS.forEach(g => { p2.innerHTML += `<option value="${g}">${g}</option>`; });
   await initData();
   if (data.currentUser) setTimeout(() => showApp(), 100);
   updateSyncStatus(syncStatus);
@@ -960,9 +904,9 @@ function render() {
 function updateNavActive() {
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   const map = { dashboard: 'nav-home', 'create-exam': 'nav-exams', 'bulk-import': 'nav-exams',
-    'manage-users': 'nav-users', 'excel-import': 'nav-users', 'uc-subjects': 'nav-users', 'uc-subject-detail': 'nav-users', 'teacher-my-classes': 'nav-users',
-    'uc-classes': 'nav-classes', 'uc-class-detail': 'nav-classes', 'manage-classes': 'nav-classes',
-    analytics: 'nav-stats', 'activity-log': 'nav-stats', 'posters': 'nav-stats', 'subjects': 'nav-stats', 'subject-detail': 'nav-stats',
+    'manage-users': 'nav-users', 'excel-import': 'nav-users', 'manage-classes': 'nav-users', 'uc-classes': 'nav-users', 'uc-class-detail': 'nav-users', 'uc-subjects': 'nav-users', 'uc-subject-detail': 'nav-users', 'teacher-my-classes': 'nav-users',
+    analytics: 'nav-stats', 'activity-log': 'nav-stats', 'posters': 'nav-stats',
+    subjects: 'nav-subjects', 'subject-detail': 'nav-subjects',
     'my-results': 'snav-results', 'available-exams': 'snav-exams', 'student-news': 'snav-news' };
   const id = map[currentView] || (data.currentUser && data.currentUser.role === 'student' ? 'snav-home' : 'nav-home');
   const el = document.getElementById(id);
@@ -978,12 +922,10 @@ function navigate(view, examId) {
 function renderAdminDashboard() {
   const user = data.currentUser;
   const isAdmin = user.role === 'admin';
+  const totalExams = data.exams.length;
   const totalStudents = data.users.filter(u => u.role === 'student').length;
-  const totalTeachers = data.users.filter(u => u.role === 'teacher').length;
-  // Teacher sees own exams/subs; admin sees all
-  const myExams = isAdmin ? data.exams : data.exams.filter(e => e.createdByName === user.name);
-  const mySubs = isAdmin ? data.submissions : data.submissions.filter(s => myExams.find(e=>e.id===s.examId));
-  const avgScore = mySubs.length > 0 ? Math.round(mySubs.reduce((s,x) => s + x.percentage, 0) / mySubs.length) : 0;
+  const totalSubmissions = data.submissions.length;
+  const avgScore = totalSubmissions > 0 ? Math.round(data.submissions.reduce((s,x) => s + x.percentage, 0) / totalSubmissions) : 0;
   const roleLabel = isAdmin ? 'Админ' : 'Багш';
 
   return `
@@ -994,15 +936,15 @@ function renderAdminDashboard() {
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
       <div class="stat-card" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);">
-        <div style="font-size:28px;font-weight:900;">${myExams.length}</div>
-        <div style="font-size:11px;opacity:0.85;">📝 ${isAdmin?'Нийт':'Миний'} сорил</div>
+        <div style="font-size:28px;font-weight:900;">${totalExams}</div>
+        <div style="font-size:11px;opacity:0.85;">📝 Нийт сорил</div>
       </div>
       <div class="stat-card" style="background:linear-gradient(135deg,#8b5cf6,#6d28d9);">
-        <div style="font-size:28px;font-weight:900;">${isAdmin?totalStudents:totalTeachers}</div>
-        <div style="font-size:11px;opacity:0.85;">${isAdmin?'👨‍🎓 Суралцагч':'👩‍🏫 Багш нар'}</div>
+        <div style="font-size:28px;font-weight:900;">${totalStudents}</div>
+        <div style="font-size:11px;opacity:0.85;">👨‍🎓 Суралцагч</div>
       </div>
       <div class="stat-card" style="background:linear-gradient(135deg,#10b981,#059669);">
-        <div style="font-size:28px;font-weight:900;">${mySubs.length}</div>
+        <div style="font-size:28px;font-weight:900;">${totalSubmissions}</div>
         <div style="font-size:11px;opacity:0.85;">✅ Өгсөн шалгалт</div>
       </div>
       <div class="stat-card" style="background:linear-gradient(135deg,#f59e0b,#d97706);">
@@ -1022,10 +964,13 @@ function renderAdminDashboard() {
       <button class="menu-btn" onclick="navigate('manage-users')">
         <span class="icon">👥</span><span class="label">Хэрэглэгчид</span>
       </button>
-      <button class="menu-btn" onclick="navigate('uc-classes')">
-        <span class="icon">🏫</span><span class="label">Ангиуд</span>
+      <button class="menu-btn" onclick="navigate('excel-import')">
+        <span class="icon">📊</span><span class="label">Excel оруулах</span>
       </button>
       ${isAdmin ? `
+      <button class="menu-btn" onclick="navigate('manage-classes')">
+        <span class="icon">🏫</span><span class="label">Ангиуд</span>
+      </button>
       <button class="menu-btn" onclick="navigate('manage-announcements')">
         <span class="icon">📢</span><span class="label">Санамж</span>
       </button>
@@ -1035,24 +980,15 @@ function renderAdminDashboard() {
       <button class="menu-btn" onclick="navigate('activity-log')">
         <span class="icon">📋</span><span class="label">Үйл ажиллагаа</span>
       </button>
-      <button class="menu-btn" onclick="navigate('excel-import')">
-        <span class="icon">📊</span><span class="label">Excel оруулах</span>
+      <button class="menu-btn" onclick="showFirebaseSettings()">
+        <span class="icon">🔥</span><span class="label">Firebase</span>
       </button>
       <button class="menu-btn" onclick="navigate('analytics')">
         <span class="icon">📈</span><span class="label">Статистик</span>
-      </button>
-      <button class="menu-btn" onclick="showLoginFirebaseSetup()" style="border:2px solid #fee2e2;">
-        <span class="icon">🔥</span><span class="label" style="color:#dc2626;">Firebase</span>
       </button>
       ` : `
       <button class="menu-btn" onclick="navigate('analytics')">
         <span class="icon">📈</span><span class="label">Статистик</span>
-      </button>
-      <button class="menu-btn" onclick="navigate('posters')">
-        <span class="icon">📢</span><span class="label">Зар & Мэдэгдэл</span>
-      </button>
-      <button class="menu-btn" onclick="showLoginFirebaseSetup()" style="border:2px solid #fee2e2;">
-        <span class="icon">🔥</span><span class="label" style="color:#dc2626;">Firebase</span>
       </button>
       `}
     </div>
@@ -1069,14 +1005,14 @@ function renderAdminDashboard() {
       `).join('')}
     </div>` : ''}
 
-    <p class="section-title">📚 ${isAdmin?'Нийт':'Миний'} сорилын жагсаалт</p>
+    <p class="section-title">📚 Сорилын жагсаалт</p>
     <div>
-      ${myExams.length === 0 ? `
+      ${data.exams.length === 0 ? `
         <div style="text-align:center;padding:40px 0;color:#9ca3af;">
           <div style="font-size:48px;margin-bottom:12px;">📝</div>
           <p style="font-weight:700;">Сорил байхгүй байна</p>
         </div>` :
-        myExams.map(exam => {
+        data.exams.map(exam => {
           const subCount = data.submissions.filter(s => s.examId === exam.id).length;
           return `
           <div class="card" style="padding:16px;margin-bottom:10px;">
@@ -1109,7 +1045,6 @@ function deleteExam(id) {
   data.exams = data.exams.filter(e => e.id !== id);
   data.submissions = data.submissions.filter(s => s.examId !== id);
   logActivity('Сорил устгав', exam ? `"${exam.title}" устгагдсан` : 'Сорил устгагдсан');
-  deleteExamCloud(id);
   saveData(); render();
 }
 
@@ -1377,6 +1312,8 @@ function renderManageUsers() {
   const amSubjectHead = isTeacher && myTeacher && myTeacher.isSubjectHead;
   const teachers = data.users.filter(u => u.role === 'teacher');
   const subjectHeads = teachers.filter(u => u.isSubjectHead);
+  const students = data.users.filter(u => u.role === 'student');
+  const lastStudents = [...students].slice(-3).reverse();
   // Class teacher: which class is assigned to me
   const myClass = isTeacher ? (data.classes||[]).find(cl => cl.teacherId === user.id) : null;
 
@@ -1384,25 +1321,6 @@ function renderManageUsers() {
     <div style="background:linear-gradient(135deg,#1d4ed8,#4f46e5);border-radius:20px;padding:18px;margin-bottom:14px;color:white;">
       <h2 style="font-size:20px;font-weight:900;margin:0;">👥 Хэрэглэгчид</h2>
       <p style="opacity:0.8;font-size:12px;margin:4px 0 0;">${isAdmin?'Системийн тохиргоо':isTeacher?(amSubjectHead?'Судлагдахууны ахлагч':'Багш'):'Хэрэглэгч'}</p>
-    </div>
-
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
-      <div class="stat-card" style="background:linear-gradient(135deg,#10b981,#059669);">
-        <div style="font-size:26px;font-weight:900;">${data.users.filter(u=>u.role==='student').length}</div>
-        <div style="font-size:11px;opacity:0.85;">👨‍🎓 Сурагч</div>
-      </div>
-      <div class="stat-card" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);">
-        <div style="font-size:26px;font-weight:900;">${data.users.filter(u=>u.role==='teacher').length}</div>
-        <div style="font-size:11px;opacity:0.85;">👩‍🏫 Багш</div>
-      </div>
-      <div class="stat-card" style="background:linear-gradient(135deg,#8b5cf6,#6d28d9);">
-        <div style="font-size:26px;font-weight:900;">${data.exams.length}</div>
-        <div style="font-size:11px;opacity:0.85;">📝 Нийт сорил</div>
-      </div>
-      <div class="stat-card" style="background:linear-gradient(135deg,#f59e0b,#d97706);">
-        <div style="font-size:26px;font-weight:900;">${data.submissions.length}</div>
-        <div style="font-size:11px;opacity:0.85;">✅ Өгсөн сорил</div>
-      </div>
     </div>
 
     ${isAdmin ? `
@@ -1416,19 +1334,20 @@ function renderManageUsers() {
       <button class="menu-btn" onclick="navigate('uc-classes')">
         <span class="icon">🏫</span><span class="label">Ангиуд</span>
       </button>
-      ${isAdmin ? `
       <button class="menu-btn" onclick="navigate('uc-subjects')">
         <span class="icon">📚</span><span class="label">Судлагдахуун</span>
       </button>
+      ${isAdmin ? `
       <button class="menu-btn" onclick="navigate('manage-classes')">
         <span class="icon">✏️</span><span class="label">Анги тохируулах</span>
       </button>
       <button class="menu-btn" onclick="navigate('excel-import')">
         <span class="icon">📊</span><span class="label">Excel оруулах</span>
-      </button>` : `
+      </button>` : ''}
+      ${isTeacher ? `
       <button class="menu-btn" onclick="navigate('teacher-my-classes')">
         <span class="icon">🎓</span><span class="label">Миний ангиуд</span>
-      </button>`}
+      </button>` : ''}
     </div>
 
     <p class="section-title">⭐ Судлагдахууны ахлагч нар (${subjectHeads.length})</p>
@@ -1443,15 +1362,27 @@ function renderManageUsers() {
                 <div style="font-size:11px;color:#6b7280;">${u.subject||'—'}</div>
               </div>
             </div>
+            ${isAdmin ? `
             <div style="display:flex;gap:4px;">
-              ${(isAdmin || (amSubjectHead && myTeacher && myTeacher.subject === u.subject)) ? `
-              <button onclick="showEditUserModal(${u.id})" style="background:#eff6ff;color:#1d4ed8;border:none;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">✏️</button>` : ''}
-              ${isAdmin ? `
+              <button onclick="showEditUserModal(${u.id})" style="background:#eff6ff;color:#1d4ed8;border:none;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">✏️</button>
               <button onclick="toggleSubjectHead(${u.id})" style="background:#fef9c3;color:#92400e;border:none;border-radius:8px;padding:7px 10px;font-size:11px;cursor:pointer;">⭐ Хасах</button>
-              <button onclick="deleteUser(${u.id})" style="background:#fef2f2;color:#dc2626;border:none;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">🗑️</button>` : ''}
-            </div>
+              <button onclick="deleteUser(${u.id})" style="background:#fef2f2;color:#dc2626;border:none;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">🗑️</button>
+            </div>` : ''}
           </div>`).join('')}
-    </div>`;
+    </div>
+
+    ${isAdmin && lastStudents.length > 0 ? `
+    <p class="section-title">🕐 Сүүлд нэмэгдсэн сурагчид</p>
+    <div style="margin-bottom:14px;">
+      ${lastStudents.map(u => `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:white;border-radius:12px;margin-bottom:6px;box-shadow:0 1px 6px rgba(0,0,0,0.05);">
+          <div>
+            <span style="font-weight:800;font-size:13px;">${u.name}</span>
+            <span style="font-size:11px;color:#6b7280;margin-left:6px;">${u.regNumber} • ${u.grade||''}</span>
+          </div>
+          <span style="font-size:11px;background:#dcfce7;color:#166534;padding:3px 8px;border-radius:8px;font-weight:700;">Шинэ</span>
+        </div>`).join('')}
+    </div>` : ''}`;
 }
 
 // ===== UC-CLASSES: Ангиуд =====
@@ -1461,41 +1392,31 @@ function renderUCClasses() {
   const user = data.currentUser;
   const isAdmin = user.role === 'admin';
   const isTeacher = user.role === 'teacher';
-  const myTeacher = isTeacher ? data.users.find(u => u.id === user.id) : null;
-  const myTeachingClasses = myTeacher ? (myTeacher.teachingClasses||[]) : [];
   const myClass = isTeacher ? data.classes.find(cl => cl.teacherId === user.id) : null;
-  // Teacher sees: class they manage + classes they teach
-  const visibleClasses = isAdmin ? data.classes :
-    data.classes.filter(cl => cl.teacherId === user.id || myTeachingClasses.includes(cl.name));
 
   return `
+    <button onclick="navigate('manage-users')" style="display:flex;align-items:center;gap:6px;color:#1d4ed8;background:none;border:none;font-weight:800;font-size:15px;cursor:pointer;padding:0;margin-bottom:14px;">← Буцах</button>
     <div style="background:linear-gradient(135deg,#0d9488,#0f766e);border-radius:20px;padding:18px;margin-bottom:14px;color:white;">
       <h2 style="font-size:20px;font-weight:900;margin:0;">🏫 Ангиуд</h2>
-      <p style="opacity:0.8;font-size:12px;margin:4px 0 0;">${isAdmin ? data.classes.length + ' анги бүртгэлтэй' : (visibleClasses.length > 0 ? visibleClasses.length + ' анги' : 'Анги тохируулаагүй')}</p>
+      <p style="opacity:0.8;font-size:12px;margin:4px 0 0;">${data.classes.length} анги бүртгэлтэй</p>
     </div>
     ${isAdmin ? `<button onclick="showAddClassModal()" class="btn-primary" style="margin-bottom:14px;background:linear-gradient(135deg,#0d9488,#0f766e);">➕ Шинэ анги нэмэх</button>` : ''}
     <div>
-      ${visibleClasses.length === 0 ? `
+      ${data.classes.length === 0 ? `
         <div style="text-align:center;padding:40px;background:white;border-radius:18px;color:#9ca3af;">
-          <div style="font-size:40px;">🏫</div><p style="font-weight:700;">${isTeacher ? 'Танд удирдах анги тохируулаагүй байна' : 'Анги бүртгэлгүй'}</p>
+          <div style="font-size:40px;">🏫</div><p style="font-weight:700;">Анги бүртгэлгүй</p>
         </div>` :
-        visibleClasses.map(cls => {
+        data.classes.map(cls => {
           const teacher = data.users.find(u => u.id === cls.teacherId);
           const studs = data.users.filter(u => u.role === 'student' && u.grade === cls.name);
-          const isMyClass = cls.teacherId === user.id;
-          const isTeachingHere = myTeachingClasses.includes(cls.name);
+          const canManage = isAdmin || (isTeacher && cls.teacherId === user.id);
           return `
             <div class="card" style="padding:14px;margin-bottom:10px;cursor:pointer;" onclick="ucCurrentClassId=${cls.id};navigate('uc-class-detail')">
               <div style="display:flex;justify-content:space-between;align-items:center;">
-                <div style="flex:1;">
-                  <div style="display:flex;align-items:center;gap:8px;">
-                    <div style="font-size:20px;font-weight:900;color:#0f766e;">${cls.name}</div>
-                    ${isMyClass ? '<span style="background:#fef9c3;color:#92400e;font-size:11px;font-weight:800;padding:3px 8px;border-radius:8px;">Анги удирдагч</span>' : ''}
-                    ${isTeachingHere && !isMyClass ? '<span style="background:#eff6ff;color:#1d4ed8;font-size:11px;font-weight:800;padding:3px 8px;border-radius:8px;">Хичээлтэй</span>' : ''}
-                  </div>
-                  <div style="font-size:12px;color:#6b7280;margin-top:4px;">
-                    👩‍🏫 ${teacher?teacher.name:'Тохируулаагүй'} • 
-                    <span style="background:#f0fdf4;color:#166534;font-weight:800;padding:2px 8px;border-radius:8px;">👨‍🎓 ${studs.length}</span>
+                <div>
+                  <div style="font-size:20px;font-weight:900;color:#0f766e;">${cls.name}</div>
+                  <div style="font-size:12px;color:#6b7280;margin-top:2px;">
+                    👩‍🏫 ${teacher?teacher.name:'Тохируулаагүй'} • 👨‍🎓 ${studs.length} сурагч
                   </div>
                 </div>
                 <span style="color:#9ca3af;font-size:20px;">›</span>
@@ -1517,7 +1438,7 @@ function renderUCClassDetail() {
   const studs = data.users.filter(u => u.role === 'student' && u.grade === cls.name);
 
   return `
-    <button onclick="navigate('uc-classes')" style="display:flex;align-items:center;gap:6px;color:#0f766e;background:none;border:none;font-weight:800;font-size:15px;cursor:pointer;padding:0;margin-bottom:14px;">← Ангиуд руу буцах</button>
+    <button onclick="navigate('uc-classes')" style="display:flex;align-items:center;gap:6px;color:#0f766e;background:none;border:none;font-weight:800;font-size:15px;cursor:pointer;padding:0;margin-bottom:14px;">← Буцах</button>
     <div style="background:linear-gradient(135deg,#0d9488,#0f766e);border-radius:20px;padding:18px;margin-bottom:14px;color:white;">
       <div style="font-size:28px;font-weight:900;">${cls.name}</div>
       <div style="opacity:0.85;font-size:13px;">👩‍🏫 ${teacher?teacher.name:'Тохируулаагүй'} • 👨‍🎓 ${studs.length} сурагч</div>
@@ -1584,8 +1505,7 @@ function addStudentToClassDirect(className) {
   const name = last + '.' + first;
   data.users.push({ id: Date.now(), regNumber: reg, password: pwd, name, role: 'student', grade: className });
   logActivity('Сурагч нэмэв', `${name} → ${className}`);
-  saveData(); closeModal();
-  navigate('uc-class-detail');
+  saveDataNow().then(() => { closeModal(); navigate('uc-class-detail'); });
 }
 
 function showBulkAddToClass(className) {
@@ -1625,7 +1545,7 @@ function doBulkAddToClass(className) {
     data.users.push({ id: Date.now()+Math.random(), regNumber: reg, password: pwd, name, role: 'student', grade: className });
     added++; rdCounter++;
   });
-  saveData();
+  saveDataNow();
   const res = document.getElementById('bulk-result');
   res.classList.remove('hidden');
   res.style.cssText = `padding:10px;border-radius:10px;font-size:12px;margin-bottom:10px;background:${added>0?'#f0fdf4':'#fef9c3'};border:2px solid ${added>0?'#bbf7d0':'#fde68a'};`;
@@ -1703,13 +1623,13 @@ function renderUCSubjectDetail() {
                   <div style="font-size:11px;color:#6b7280;">${t.regNumber}</div>
                   <div style="font-size:11px;color:#374151;margin-top:4px;">📚 Ордог ангиуд: ${tClasses}</div>
                 </div>
-                ${(isAdmin || amSubjectHead) ? `
+                ${canEdit ? `
                 <div style="display:flex;gap:4px;">
                   <button onclick="showEditUserModal(${t.id})" style="background:#eff6ff;color:#1d4ed8;border:none;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">✏️</button>
                   ${isAdmin ? `<button onclick="toggleSubjectHead(${t.id})" style="background:#fef9c3;color:#92400e;border:none;border-radius:8px;padding:7px 8px;font-size:11px;cursor:pointer;">${isHead?'⭐ Болих':'⭐ Ахлагч'}</button>` : ''}
                 </div>` : ''}
               </div>
-              ${(isAdmin || amSubjectHead) ? `
+              ${canEdit ? `
               <div>
                 <div style="font-size:11px;font-weight:800;color:#475569;margin-bottom:6px;">Хичээл ордог ангиуд тохируулах:</div>
                 <div style="display:flex;flex-wrap:wrap;gap:6px;">
@@ -1782,6 +1702,9 @@ function renderTeacherMyClasses() {
         const has = myTeachingClasses.includes(cl.name);
         return `<button onclick="selfToggleTeacherClass('${cl.name}')" style="padding:10px 16px;border-radius:20px;border:2px solid ${has?'#f97316':'#e5e7eb'};background:${has?'#fff7ed':'white'};color:${has?'#ea580c':'#6b7280'};font-weight:800;font-size:13px;cursor:pointer;">${has?'✓ ':''} ${cl.name}</button>`;
       }).join('')}
+    </div>
+    <div style="background:#fef9c3;border-left:4px solid #eab308;border-radius:0 12px 12px 0;padding:12px;font-size:12px;color:#92400e;">
+      ⚠️ Анги нэмэх хүсэлтийг судлагдахууны ахлагч батлах шаардлагатай.
     </div>`;
 }
 
@@ -1800,6 +1723,7 @@ function selfToggleTeacherClass(className) {
   saveData(); render();
 }
 
+function showAddUserModal
 function showAddUserModal(defaultRole) {
   const isAdmin = data.currentUser.role === 'admin';
   document.getElementById('modal-body').innerHTML = `
@@ -1873,72 +1797,14 @@ function addUser(defaultRole) {
     data.users.push({ id: Date.now(), regNumber: username, password: pwd, name, role: 'teacher', subject, isSubjectHead: isHead, teachingClasses: [] });
     logActivity('Хэрэглэгч нэмэв', `${name} багш нэмэгдлээ`);
   }
-  saveData(); closeModal(); render();
+  saveDataNow().then(() => { closeModal(); render(); });
 }
 function deleteUser(id) {
   if (!confirm('Устгах уу?')) return;
   const u = data.users.find(x => x.id === id);
   data.users = data.users.filter(x => x.id !== id);
   logActivity('Хэрэглэгч устгав', u ? `${u.name} (${u.regNumber})` : '');
-  deleteUserCloud(id);
   saveData(); render();
-}
-
-function showEditUserModal(userId) {
-  const u = data.users.find(x => x.id === userId);
-  if (!u) return;
-  const isTeacher = u.role === 'teacher';
-  const currentUser = data.currentUser;
-  const amAdmin = currentUser.role === 'admin';
-  document.getElementById('modal-body').innerHTML = `
-    <h3 style="font-size:18px;font-weight:900;margin-bottom:16px;">✏️ ${u.name} — мэдээлэл засах</h3>
-    <div style="display:flex;flex-direction:column;gap:12px;">
-      <div><label style="font-size:12px;font-weight:800;display:block;margin-bottom:5px;">Овог.Нэр *</label>
-        <input id="eu-name" type="text" value="${u.name}" class="input-field"></div>
-      ${isTeacher ? `
-      <div><label style="font-size:12px;font-weight:800;display:block;margin-bottom:5px;">Нэвтрэх код</label>
-        <input id="eu-reg" type="text" value="${u.regNumber}" class="input-field" ${amAdmin?'':'readonly style="background:#f9fafb;"'}></div>
-      <div><label style="font-size:12px;font-weight:800;display:block;margin-bottom:5px;">Судлагдахуун</label>
-        <input id="eu-subject" type="text" value="${u.subject||''}" class="input-field"></div>
-      ` : `
-      <div><label style="font-size:12px;font-weight:800;display:block;margin-bottom:5px;">Нэвтрэх код</label>
-        <input id="eu-reg" type="text" value="${u.regNumber}" class="input-field" ${amAdmin?'':'readonly style="background:#f9fafb;"'}></div>
-      <div><label style="font-size:12px;font-weight:800;display:block;margin-bottom:5px;">Анги</label>
-        <input id="eu-grade" type="text" value="${u.grade||''}" class="input-field"></div>
-      `}
-      <div><label style="font-size:12px;font-weight:800;display:block;margin-bottom:5px;">Нууц үг</label>
-        <input id="eu-pwd" type="text" value="${u.password}" class="input-field"></div>
-      <div style="display:flex;gap:8px;margin-top:4px;">
-        <button onclick="saveEditUser(${userId})" class="btn-primary btn-green" style="flex:1;">✓ Хадгалах</button>
-        <button onclick="closeModal()" class="btn-primary btn-gray" style="flex:1;">Цуцлах</button>
-      </div>
-    </div>`;
-  document.getElementById('modal').classList.remove('hidden');
-}
-
-function saveEditUser(userId) {
-  const u = data.users.find(x => x.id === userId);
-  if (!u) return;
-  const amAdmin = data.currentUser.role === 'admin';
-  const newName = document.getElementById('eu-name').value.trim();
-  if (!newName) { alert('Нэр оруулна уу!'); return; }
-  u.name = newName;
-  u.password = document.getElementById('eu-pwd').value || u.password;
-  if (amAdmin) {
-    const newReg = document.getElementById('eu-reg').value.trim();
-    if (newReg && newReg !== u.regNumber) {
-      if (data.users.find(x => x.regNumber === newReg && x.id !== userId)) { alert('Энэ нэвтрэх код аль хэдийн бүртгэлтэй!'); return; }
-      u.regNumber = newReg;
-    }
-  }
-  if (u.role === 'teacher' && document.getElementById('eu-subject')) {
-    u.subject = document.getElementById('eu-subject').value.trim();
-  }
-  if (u.role === 'student' && document.getElementById('eu-grade')) {
-    u.grade = document.getElementById('eu-grade').value.trim();
-  }
-  logActivity('Хэрэглэгч засав', `${u.name} (${u.regNumber})`);
-  saveData(); closeModal(); render();
 }
 
 // ============ EXCEL IMPORT ============
@@ -2309,18 +2175,14 @@ function renderExamDetail() {
 
 // ============ ANALYTICS ============
 function renderAnalytics() {
-  const user = data.currentUser;
-  const isAdmin = user.role === 'admin';
   const students = data.users.filter(u=>u.role==='student').length;
   const teachers = data.users.filter(u=>u.role==='teacher').length;
-  const myExams = isAdmin ? data.exams : data.exams.filter(e=>e.createdByName===user.name);
-  const mySubs = isAdmin ? data.submissions : data.submissions.filter(s=>myExams.find(e=>e.id===s.examId));
-  const totalSubs = mySubs.length;
-  const passedCount = mySubs.filter(s=>s.passed).length;
-  const avg = totalSubs > 0 ? Math.round(mySubs.reduce((s,x)=>s+x.percentage,0)/totalSubs) : 0;
+  const totalSubs = data.submissions.length;
+  const passedCount = data.submissions.filter(s=>s.passed).length;
+  const avg = totalSubs > 0 ? Math.round(data.submissions.reduce((s,x)=>s+x.percentage,0)/totalSubs) : 0;
   return `
     <div style="background:linear-gradient(135deg,#1d4ed8,#4f46e5);border-radius:20px;padding:20px;margin-bottom:16px;color:white;">
-      <p style="opacity:0.8;font-size:13px;margin:0 0 4px;">${isAdmin?'Системийн ерөнхий':'Миний'} статистик</p>
+      <p style="opacity:0.8;font-size:13px;margin:0 0 4px;">Системийн ерөнхий статистик</p>
       <h2 style="font-size:22px;font-weight:900;margin:0;">📊 Дүн шинжилгээ</h2>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
@@ -2333,25 +2195,17 @@ function renderAnalytics() {
         <div style="font-size:11px;opacity:0.85;">👩‍🏫 Багш</div>
       </div>
       <div class="stat-card" style="background:linear-gradient(135deg,#8b5cf6,#6d28d9);">
-        <div style="font-size:28px;font-weight:900;">${myExams.length}</div>
-        <div style="font-size:11px;opacity:0.85;">📝 ${isAdmin?'Нийт':'Миний'} сорил</div>
-      </div>
-      <div class="stat-card" style="background:linear-gradient(135deg,#f59e0b,#d97706);">
         <div style="font-size:28px;font-weight:900;">${totalSubs}</div>
         <div style="font-size:11px;opacity:0.85;">✅ Өгсөн шалгалт</div>
       </div>
-      <div class="stat-card" style="background:linear-gradient(135deg,#ec4899,#db2777);">
-        <div style="font-size:28px;font-weight:900;">${passedCount}</div>
-        <div style="font-size:11px;opacity:0.85;">🏆 Тэнцсэн</div>
-      </div>
-      <div class="stat-card" style="background:linear-gradient(135deg,#14b8a6,#0d9488);">
+      <div class="stat-card" style="background:linear-gradient(135deg,#f59e0b,#d97706);">
         <div style="font-size:28px;font-weight:900;">${avg}%</div>
         <div style="font-size:11px;opacity:0.85;">📊 Дундаж оноо</div>
       </div>
     </div>
-    <p class="section-title">${isAdmin?'Нийт':'Миний'} сорил бүрийн гүйцэтгэл</p>
+    <p class="section-title">Сорил бүрийн гүйцэтгэл</p>
     <div>
-      ${myExams.map(exam => {
+      ${data.exams.map(exam => {
         const subs = data.submissions.filter(s => s.examId === exam.id);
         const avgEx = subs.length > 0 ? Math.round(subs.reduce((s,x)=>s+x.percentage,0)/subs.length) : 0;
         return `
@@ -2360,7 +2214,7 @@ function renderAnalytics() {
               <div style="font-weight:800;font-size:14px;flex:1;padding-right:10px;">${exam.title}</div>
               <div style="font-weight:900;font-size:18px;color:${avgEx>=70?'#166534':avgEx>=40?'#92400e':'#991b1b'};">${avgEx}%</div>
             </div>
-            <div style="font-size:12px;color:#6b7280;margin-bottom:6px;">🔑 ${exam.examCode} • ${subs.length} оролцогч${!isAdmin?` • 👤 ${exam.createdByName}`:''}</div>
+            <div style="font-size:12px;color:#6b7280;margin-bottom:6px;">${subs.length} оролцогч</div>
             <div class="result-bar-bg">
               <div class="result-bar-fill" style="width:${avgEx}%;background:${avgEx>=70?'#10b981':avgEx>=40?'#f59e0b':'#ef4444'};"></div>
             </div>
@@ -2445,6 +2299,62 @@ function clearActivityLog() {
 }
 
 // ============ STUDENT HOME ============
+function renderStudentHome() {
+  const user = data.currentUser;
+  const mySubmissions = data.submissions.filter(s => s.studentId === user.id);
+  const availableExams = data.exams.filter(e => e.status === 'active');
+  return `
+    <div style="background:linear-gradient(135deg,#10b981,#059669);border-radius:20px;padding:20px;margin-bottom:16px;color:white;">
+      <p style="opacity:0.8;font-size:13px;margin:0 0 4px;">${user.grade||''} анги</p>
+      <h2 style="font-size:22px;font-weight:900;margin:0;">Сайн уу, ${user.name.split('.')[1]||user.name}! 👋</h2>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+      <div class="stat-card" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);">
+        <div style="font-size:28px;font-weight:900;">${availableExams.length}</div>
+        <div style="font-size:11px;opacity:0.85;">📝 Боломжтой сорил</div>
+      </div>
+      <div class="stat-card" style="background:linear-gradient(135deg,#10b981,#059669);cursor:pointer;" onclick="navigate('my-results')">
+        <div style="font-size:28px;font-weight:900;">${mySubmissions.length}</div>
+        <div style="font-size:11px;opacity:0.85;">✅ Өгсөн шалгалт →</div>
+      </div>
+    </div>
+    <p class="section-title">📚 Боломжтой сорилууд</p>
+    <div>
+      ${availableExams.length === 0 ? `
+        <div style="text-align:center;padding:40px;background:white;border-radius:20px;color:#9ca3af;">
+          <div style="font-size:48px;margin-bottom:12px;">📝</div>
+          <p style="font-weight:700;">Боломжтой сорил байхгүй</p>
+        </div>` :
+        availableExams.map(exam => {
+          const done = mySubmissions.find(s => s.examId === exam.id);
+          return `
+          <div class="card" style="padding:16px;margin-bottom:10px;">
+            <h4 style="font-weight:900;font-size:15px;margin:0 0 6px;">${exam.title}</h4>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+              <span class="badge" style="background:#dbeafe;color:#1d4ed8;">${exam.subject}</span>
+              <span class="badge" style="background:#ede9fe;color:#6d28d9;">${exam.questions.length} асуулт</span>
+              <span class="badge" style="background:#dcfce7;color:#166534;">${exam.duration} мин</span>
+            </div>
+            ${done ? `
+              <div style="display:flex;align-items:center;justify-content:space-between;background:${done.passed?'#f0fdf4':'#fef2f2'};border-radius:12px;padding:12px;">
+                <span style="font-weight:700;color:${done.passed?'#166534':'#991b1b'};">${done.passed?'✅ Тэнцсэн':'❌ Унасан'}</span>
+                <span style="font-weight:900;font-size:20px;color:${done.passed?'#166534':'#991b1b'};">${done.percentage}%</span>
+              </div>` : `
+              <button onclick="startExam(${exam.id})" class="btn-primary btn-green">🚀 Шалгалт эхлүүлэх</button>`}
+          </div>`;
+        }).join('')}
+    </div>
+    ${data.announcements.length > 0 ? `
+    <p class="section-title" style="margin-top:16px;">📢 Санамж</p>
+    <div>
+      ${data.announcements.slice(0,3).map(a => `
+        <div class="ann-card">
+          <div style="font-weight:900;font-size:14px;margin-bottom:4px;">${a.title}</div>
+          <div style="font-size:13px;color:#374151;white-space:pre-wrap;">${a.content}</div>
+          <div style="font-size:11px;color:#9ca3af;margin-top:6px;">📅 ${a.date}</div>
+        </div>`).join('')}
+    </div>` : ''}`;
+}
 
 // ============ TAKING EXAM ============
 function startExam(examId) {
@@ -2542,18 +2452,20 @@ async function submitExam() {
     answers, score, percentage, passed: score >= exam.passingScore
   };
 
-  // ⚡ CONCURRENT-SAFE: Each student writes to their own unique Firestore document
-  // 1000 students submitting simultaneously = 1000 separate writes = NO conflicts
-  const existing = data.submissions.findIndex(s => s.studentId === submission.studentId && s.examId === submission.examId);
-  if (existing >= 0) data.submissions[existing] = submission;
-  else data.submissions.push(submission);
+  // Save to Firestore directly (no conflict possible — own document)
+  const saved = await saveSubmissionToCloud(submission);
+  if (!saved) {
+    // Fallback: save locally
+    data.submissions.push(submission);
+    saveData();
+  } else {
+    // Also update local cache
+    data.submissions.push(submission);
+    saveLocal();
+  }
 
   logActivity('Сорил өгсөн', `"${exam.title}" - ${score}/${exam.totalPoints} (${percentage}%, ${submission.passed?'тэнцсэн':'унасан'})`);
-
-  // Save submission to its own Firestore doc (async, no blocking UI)
-  saveSubmissionCloud(submission);
-  saveLocal();
-
+  saveData();
   window.lastSubmission = submission;
   navigate('results');
 }
@@ -2771,30 +2683,11 @@ function renderPosters() {
         <div><label style="font-size:12px;font-weight:800;display:block;margin-bottom:5px;">Тайлбар</label>
           <textarea id="poster-desc" class="input-field" rows="2" placeholder="Дэлгэрэнгүй мэдээлэл..."></textarea></div>
         <div><label style="font-size:12px;font-weight:800;display:block;margin-bottom:5px;">Хүргэх хэрэглэгч</label>
-          <select id="poster-target" class="input-field" onchange="togglePosterTargetOptions()">
-            <option value="all">Бүгд (нийт)</option>
+          <select id="poster-target" class="input-field">
+            <option value="all">Бүгд</option>
             <option value="student">Зөвхөн сурагчид</option>
             <option value="teacher">Зөвхөн багш нар</option>
-            <option value="class">Тодорхой анги</option>
-            <option value="selected">Сонгосон сурагчид</option>
-          </select>
-        </div>
-        <div id="poster-class-select" class="hidden">
-          <label style="font-size:12px;font-weight:800;display:block;margin-bottom:5px;">Анги сонгох</label>
-          <select id="poster-class" class="input-field">
-            ${(data.classes||[]).map(cl=>`<option value="${cl.name}">${cl.name}</option>`).join('')}
-          </select>
-        </div>
-        <div id="poster-students-select" class="hidden">
-          <label style="font-size:12px;font-weight:800;display:block;margin-bottom:5px;">Сурагчид сонгох</label>
-          <div style="max-height:200px;overflow-y:auto;border:2px solid #e5e7eb;border-radius:12px;padding:10px;">
-            ${data.users.filter(u=>u.role==='student').map(u=>`
-              <label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;">
-                <input type="checkbox" data-sid="${u.id}" style="width:18px;height:18px;">
-                <span style="font-size:13px;">${u.name} <span style="color:#9ca3af;">${u.grade||''}</span></span>
-              </label>`).join('')}
-          </div>
-        </div>
+          </select></div>
         <button onclick="sendPoster()" class="btn-primary btn-pink">📤 Илгээх</button>
       </div>
     </div>` : ''}
@@ -2809,7 +2702,7 @@ function renderPosters() {
               <div style="font-weight:900;font-size:15px;margin-bottom:4px;">${p.title}</div>
               ${p.description ? `<div style="font-size:13px;color:#374151;margin-bottom:8px;">${p.description}</div>` : ''}
               <div style="display:flex;justify-content:space-between;align-items:center;">
-                <div style="font-size:11px;color:#9ca3af;">📅 ${p.date} • 👤 ${p.createdBy} • 🎯 ${p.target==='all'?'Бүгд':p.target==='student'?'Сурагчид':p.target==='teacher'?'Багш нар':p.target==='class'?'Анги: '+(p.targetClass||''):'Сонгосон сурагчид'}</div>
+                <div style="font-size:11px;color:#9ca3af;">📅 ${p.date} • 👤 ${p.createdBy}</div>
                 ${(isAdmin || data.currentUser.name === p.createdBy) ? `<button onclick="deletePoster(${p.id})" style="background:#fef2f2;color:#dc2626;border:none;border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;">🗑️</button>` : ''}
               </div>
             </div>
@@ -2829,34 +2722,21 @@ function handlePosterUpload(event) {
   reader.readAsDataURL(file);
 }
 
-function togglePosterTargetOptions() {
-  const val = document.getElementById('poster-target').value;
-  document.getElementById('poster-class-select').classList.toggle('hidden', val !== 'class');
-  document.getElementById('poster-students-select').classList.toggle('hidden', val !== 'selected');
-}
-
 function sendPoster() {
   const title = document.getElementById('poster-title').value.trim();
   if (!title) { alert('Гарчиг оруулна уу!'); return; }
   const imageUrl = document.getElementById('poster-img').value.trim();
   const description = document.getElementById('poster-desc').value.trim();
   const target = document.getElementById('poster-target').value;
-  let targetClass = null, targetStudentIds = null;
-  if (target === 'class') { targetClass = document.getElementById('poster-class').value; }
-  if (target === 'selected') {
-    targetStudentIds = [...document.querySelectorAll('input[data-sid]:checked')].map(el => parseInt(el.dataset.sid));
-    if (targetStudentIds.length === 0) { alert('Дор хаяж 1 сурагч сонгоно уу!'); return; }
-  }
   if (!data.posters) data.posters = [];
   data.posters.push({
     id: Date.now(), title, description, imageUrl,
     imageData: posterImageData,
-    target, targetClass, targetStudentIds,
-    date: new Date().toISOString().split('T')[0],
+    target, date: new Date().toISOString().split('T')[0],
     createdBy: data.currentUser.name, createdById: data.currentUser.id
   });
   posterImageData = '';
-  logActivity('Постер илгээв', `"${title}" → ${target==='all'?'Бүгд':target==='student'?'Сурагчид':target==='teacher'?'Багш нар':target==='class'?targetClass:'Сонгосон сурагчид'}`);
+  logActivity('Постер илгээв', `"${title}"`);
   saveData(); render();
   alert('✅ Постер амжилттай илгээгдлээ!');
 }
@@ -2870,13 +2750,7 @@ function deletePoster(id) {
 // ============ STUDENT NEWS ============
 function renderStudentNews() {
   if (!data.posters) data.posters = [];
-  const user = data.currentUser;
-  const myPosters = data.posters.filter(p => {
-    if (p.target === 'all' || p.target === 'student') return true;
-    if (p.target === 'selected' && p.targetStudentIds && p.targetStudentIds.includes(user.id)) return true;
-    if (p.target === 'class' && p.targetClass === user.grade) return true;
-    return false;
-  });
+  const myPosters = data.posters.filter(p => p.target === 'all' || p.target === 'student');
   return `
     <div style="background:linear-gradient(135deg,#ec4899,#db2777);border-radius:20px;padding:20px;margin-bottom:16px;color:white;">
       <p style="opacity:0.8;font-size:13px;margin:0 0 4px;">Мэдэгдэл & Зар</p>
@@ -2919,14 +2793,6 @@ function renderAvailableExams() {
       <p style="opacity:0.8;font-size:13px;margin:0 0 4px;">Шалгалт</p>
       <h2 style="font-size:22px;font-weight:900;margin:0;">📝 Өгөх сорилууд</h2>
     </div>
-    <div class="card" style="padding:18px;margin-bottom:16px;">
-      <p style="font-weight:900;font-size:15px;margin:0 0 6px;">🔑 Сорилын кодоор эхлэх</p>
-      <p style="font-size:12px;color:#6b7280;margin:0 0 12px;">Багшаас авсан кодыг оруулна уу</p>
-      <div style="display:flex;gap:8px;">
-        <input id="exam-code-input" type="text" inputmode="numeric" maxlength="6" class="input-field" placeholder="0000" style="flex:1;text-align:center;letter-spacing:0.25em;font-size:22px!important;font-weight:900;">
-        <button onclick="startExamByCode()" style="padding:14px 18px;background:linear-gradient(135deg,#10b981,#059669);color:white;border:none;border-radius:12px;font-weight:900;font-size:15px;cursor:pointer;">→ Эхлэх</button>
-      </div>
-    </div>
     <p class="section-title">⏳ Өгөх сорил (${pending.length})</p>
     ${pending.length === 0 ? `<div style="text-align:center;padding:30px;background:white;border-radius:16px;color:#9ca3af;margin-bottom:14px;"><p style="font-weight:700;">Өгөх сорил байхгүй</p></div>` :
       pending.map(exam => `
@@ -2937,7 +2803,7 @@ function renderAvailableExams() {
             <span class="badge" style="background:#ede9fe;color:#6d28d9;">${exam.questions.length} асуулт</span>
             <span class="badge" style="background:#dcfce7;color:#166534;">${exam.duration} мин</span>
           </div>
-          <button onclick="promptExamCode(${exam.id})" class="btn-primary btn-green">🚀 Эхлүүлэх</button>
+          <button onclick="startExam(${exam.id})" class="btn-primary btn-green">🚀 Эхлүүлэх</button>
         </div>`).join('')}
     <p class="section-title">✅ Өгсөн сорил (${done.length})</p>
     ${done.map(exam => {
@@ -2951,40 +2817,6 @@ function renderAvailableExams() {
           </div>
         </div>`;
     }).join('')}`;
-}
-
-function startExamByCode() {
-  const code = (document.getElementById('exam-code-input').value||'').trim();
-  if (!code) { alert('Сорилын кодыг оруулна уу!'); return; }
-  const exam = data.exams.find(e => e.examCode === code && e.status === 'active');
-  if (!exam) { alert('Сорил олдсонгүй! Кодыг шалгана уу.'); return; }
-  const user = data.currentUser;
-  const alreadyDone = data.submissions.find(s => s.examId === exam.id && s.studentId === user.id);
-  if (alreadyDone) { alert('Та энэ сорилыг аль хэдийн өгсөн байна!'); return; }
-  startExam(exam.id);
-}
-
-function promptExamCode(examId) {
-  const exam = data.exams.find(e => e.id === examId);
-  if (!exam) return;
-  document.getElementById('modal-body').innerHTML = `
-    <h3 style="font-size:18px;font-weight:900;margin-bottom:8px;">🔑 Сорилын код оруулна уу</h3>
-    <p style="font-size:13px;color:#6b7280;margin-bottom:14px;">${exam.title}</p>
-    <input id="mc-code" type="text" inputmode="numeric" maxlength="6" class="input-field" placeholder="Сорилын код" style="text-align:center;letter-spacing:0.25em;font-size:22px!important;font-weight:900;margin-bottom:14px;" autofocus>
-    <div style="display:flex;gap:8px;">
-      <button onclick="verifyAndStart(${examId})" class="btn-primary btn-green" style="flex:1;">✓ Эхлэх</button>
-      <button onclick="closeModal()" class="btn-primary btn-gray" style="flex:1;">Цуцлах</button>
-    </div>`;
-  document.getElementById('modal').classList.remove('hidden');
-}
-
-function verifyAndStart(examId) {
-  const code = (document.getElementById('mc-code').value||'').trim();
-  const exam = data.exams.find(e => e.id === examId);
-  if (!exam) return;
-  if (code !== exam.examCode) { alert('Код буруу байна!'); return; }
-  closeModal();
-  startExam(examId);
 }
 
 // ============ EXAM ANALYSIS ============
@@ -3139,19 +2971,7 @@ function renderStudentHome() {
   const mySubmissions = data.submissions.filter(s => s.studentId === user.id);
   const availableExams = data.exams.filter(e => e.status === 'active');
   const pendingCount = availableExams.filter(e => !mySubmissions.find(s => s.examId === e.id)).length;
-  // Filter posters/ads visible to this student
-  const myPosters = (data.posters||[]).filter(p => {
-    if (p.target === 'all' || p.target === 'student') return true;
-    if (p.target === 'selected' && p.targetStudentIds && p.targetStudentIds.includes(user.id)) return true;
-    if (p.target === 'class' && p.targetClass && p.targetClass === user.grade) return true;
-    return false;
-  });
-  const myAds = (data.ads||[]).filter(a => {
-    if (a.target === 'all' || a.target === 'student') return true;
-    if (a.target === 'selected' && a.targetStudentIds && a.targetStudentIds.includes(user.id)) return true;
-    if (a.target === 'class' && a.targetClass && a.targetClass === user.grade) return true;
-    return false;
-  });
+  const myPosters = (data.posters||[]).filter(p => p.target === 'all' || p.target === 'student');
   return `
     <div style="background:linear-gradient(135deg,#10b981,#059669);border-radius:20px;padding:20px;margin-bottom:16px;color:white;">
       <p style="opacity:0.8;font-size:13px;margin:0 0 4px;">${user.grade||''} анги</p>
@@ -3168,26 +2988,16 @@ function renderStudentHome() {
       </div>
     </div>
     ${myPosters.length > 0 ? `
-    <p class="section-title">📢 Постер & Мэдэгдэл</p>
-    <div style="margin-bottom:16px;">
-      ${[...myPosters].reverse().slice(0,3).map(p => `
-        <div class="card" style="margin-bottom:8px;overflow:hidden;cursor:pointer;" onclick="navigate('student-news')">
+    <p class="section-title">📢 Мэдэгдэл</p>
+    <div style="margin-bottom:16px;" onclick="navigate('student-news')">
+      ${myPosters.slice(-2).reverse().map(p => `
+        <div class="card" style="margin-bottom:8px;overflow:hidden;cursor:pointer;">
           ${p.imageData ? `<img src="${p.imageData}" alt="${p.title}" style="width:100%;max-height:160px;object-fit:cover;display:block;">` :
             p.imageUrl ? `<img src="${p.imageUrl}" alt="${p.title}" style="width:100%;max-height:160px;object-fit:cover;display:block;" onerror="this.style.display='none'">` : ''}
           <div style="padding:12px;">
             <div style="font-weight:800;font-size:14px;">${p.title}</div>
             ${p.description ? `<div style="font-size:12px;color:#6b7280;margin-top:4px;">${p.description.substring(0,80)}${p.description.length>80?'...':''}</div>` : ''}
           </div>
-        </div>`).join('')}
-    </div>` : ''}
-    ${myAds.length > 0 ? `
-    <p class="section-title">📋 Зар мэдэгдэл</p>
-    <div style="margin-bottom:16px;">
-      ${[...myAds].reverse().slice(0,3).map(a => `
-        <div class="ann-card" style="cursor:pointer;" onclick="navigate('student-news')">
-          <div style="font-weight:800;font-size:14px;margin-bottom:4px;">${a.title}</div>
-          <div style="font-size:13px;color:#374151;">${a.content}</div>
-          <div style="font-size:11px;color:#9ca3af;margin-top:6px;">📅 ${a.date}</div>
         </div>`).join('')}
     </div>` : ''}
     ${data.announcements.length > 0 ? `
