@@ -433,7 +433,7 @@ function saveLocal() {
 function loadLocal() {
   try { const s = localStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : null; } catch(e) { return null; }
 }
-const DEFAULT_BIN_ID = '6a07f5f8e41b4d34f87c1234';
+const DEFAULT_BIN_ID = '6a0817ebadc21f119aaa4296';
 function getBinId() {
   const urlParams = new URLSearchParams(window.location.search);
   const urlBin = urlParams.get('bin');
