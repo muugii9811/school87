@@ -150,6 +150,18 @@
       background: #f3f4f6; color: #374151;
       box-shadow: none;
     }
+    .btn-orange {
+      background: linear-gradient(135deg, #f97316, #ea580c);
+      box-shadow: 0 4px 14px rgba(249,115,22,0.35);
+    }
+    .btn-pink {
+      background: linear-gradient(135deg, #ec4899, #db2777);
+      box-shadow: 0 4px 14px rgba(236,72,153,0.35);
+    }
+    .btn-purple {
+      background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+      box-shadow: 0 4px 14px rgba(139,92,246,0.35);
+    }
 
     /* ── Tab switcher ── */
     .tab-pill {
@@ -271,6 +283,9 @@
 
 <!-- =========== LOGIN PAGE =========== -->
 <div id="login-page">
+  <!-- Hidden selects for grade/group options used in modals -->
+  <select id="prefix1" style="display:none;"></select>
+  <select id="prefix2" style="display:none;"></select>
   <div style="text-align:center; margin-bottom:28px;">
     <div style="width:80px;height:80px;background:rgba(255,255,255,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:32px;font-weight:900;color:white;border:3px solid rgba(255,255,255,0.4);">87</div>
     <h1 style="color:white;font-size:20px;font-weight:900;margin:0;line-height:1.3;">87 ДУГААР СУРГУУЛИЙН<br>ЦАХИМ ШАЛГАЛТ</h1>
@@ -408,6 +423,20 @@
 const STORAGE_KEY = 'school87_data_v6';
 const FB_CONFIG_KEY = 'school87_firebase_v1';
 
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  ADMIN: Firebase тохируулгыг энд оруулна уу                 ║
+// ║  Admin нэг удаа оруулбал БҮГД автоматаар ашиглана           ║
+// ║  Firebase Console → Project Settings → Your apps            ║
+// ╚══════════════════════════════════════════════════════════════╝
+const HARDCODED_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAn2T-v6vSzmQW1gjSUXSA33iUpJa9K558",
+  authDomain: "school87-54d4d.firebaseapp.com",
+  projectId: "school87-54d4d",
+  storageBucket: "school87-54d4d.firebasestorage.app",
+  messagingSenderId: "993312213129",
+  appId: "1:993312213129:web:bab8b9ace8d15a78861e58"
+};
+
 let syncStatus = 'idle';
 let lastSyncTime = null;
 let syncTimeout = null;
@@ -419,6 +448,11 @@ let db = null;
 let submissionsUnsubscribe = null;
 
 function getFirebaseConfig() {
+  // 1. Файлд хатуу кодлосон тохируулга (хамгийн эрэмбэ өндөр)
+  if (HARDCODED_FIREBASE_CONFIG && HARDCODED_FIREBASE_CONFIG.apiKey) {
+    return HARDCODED_FIREBASE_CONFIG;
+  }
+  // 2. localStorage-д хадгалсан тохируулга (admin UI-аас оруулсан)
   try { const s = localStorage.getItem(FB_CONFIG_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
 }
 function saveFirebaseConfig(cfg) {
@@ -430,7 +464,9 @@ function initFirebase(cfg) {
     if (fbApp) { try { fbApp.delete(); } catch {} }
     fbApp = firebase.initializeApp(cfg, 'school87-' + Date.now());
     db = fbApp.firestore();
-    db.settings({ experimentalForceLongPolling: false });
+    // experimentalForceLongPolling=true нь 500+ хэрэглэгч зэрэг орох үед
+    // WebChannel холболтын асуудлыг шийддэг
+    db.settings({ experimentalForceLongPolling: true, merge: true });
     return true;
   } catch(e) { console.error('Firebase init error:', e); return false; }
 }
@@ -521,18 +557,27 @@ async function saveToCloud() {
   if (!isFirebaseReady()) { updateSyncStatus('offline'); return false; }
   try {
     updateSyncStatus('syncing');
+    // 500 хэрэглэгч байвал config хэт том болж болно
+    // users-ийг тусдаа хадгалж, config-ийг жижигрүүлнэ
     const configData = {
-      users: data.users || [],
       exams: data.exams || [],
       announcements: data.announcements || [],
       classes: data.classes || [],
       subjects: data.subjects || [],
-      posters: data.posters || [],
+      posters: (data.posters || []).map(p => ({...p, imageData: ''})), // зураг хасна (том)
       sentAnalyses: data.sentAnalyses || [],
       activityLog: (data.activityLog || []).slice(0, 200),
       updatedAt: new Date().toISOString()
     };
     await db.collection('school87').doc('config').set(configData);
+
+    // Хэрэглэгчдийг тусдаа doc-д хадгална (500 хэрэглэгч дэмжинэ)
+    const usersData = {
+      users: data.users || [],
+      updatedAt: new Date().toISOString()
+    };
+    await db.collection('school87').doc('users').set(usersData);
+
     updateSyncStatus('synced');
     lastSyncTime = new Date();
     return true;
@@ -544,21 +589,42 @@ async function loadFromCloud() {
   if (!isFirebaseReady()) return null;
   try {
     updateSyncStatus('syncing');
-    const doc = await db.collection('school87').doc('config').get();
+    const [configDoc, usersDoc] = await Promise.all([
+      db.collection('school87').doc('config').get(),
+      db.collection('school87').doc('users').get()
+    ]);
     updateSyncStatus('synced');
     lastSyncTime = new Date();
-    return doc.exists ? doc.data() : null;
+    if (!configDoc.exists) return null;
+    const configData = configDoc.data();
+    // Хуучин форматтай нийцтэй байлгана
+    if (usersDoc.exists && usersDoc.data().users) {
+      configData.users = usersDoc.data().users;
+    } else if (!configData.users) {
+      configData.users = [];
+    }
+    return configData;
   } catch(e) { console.error('Load error:', e); updateSyncStatus('error'); return null; }
 }
 
-// Save a single submission directly (no conflicts!)
-async function saveSubmissionToCloud(submission) {
+// Save a single submission directly (no conflicts!) — retry дэмжлэгтэй
+async function saveSubmissionToCloud(submission, retries = 3) {
   if (!isFirebaseReady()) return false;
-  try {
-    await db.collection('school87').doc('submissions').collection('items')
-      .doc(String(submission.id)).set(submission);
-    return true;
-  } catch(e) { console.error('Submission save error:', e); return false; }
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      await db.collection('school87').doc('submissions').collection('items')
+        .doc(String(submission.id)).set(submission);
+      return true;
+    } catch(e) {
+      console.warn(`Submission save attempt ${attempt+1} failed:`, e);
+      if (attempt < retries - 1) {
+        // Экспоненциал хүлээлт: 500ms, 1000ms, 2000ms
+        await new Promise(r => setTimeout(r, 500 * Math.pow(2, attempt)));
+      }
+    }
+  }
+  console.error('Submission save failed after retries');
+  return false;
 }
 
 // Load all submissions from Firestore
@@ -607,33 +673,54 @@ async function saveDataNow() {
 }
 
 async function initData() {
-  // 1. Load from localStorage first (instant)
+  // 1. Тэр даруй локал өгөгдлийг ачаална (хурдан)
   const localData = loadLocal();
   if (localData && localData.users) {
     data = { ...data, ...localData };
     if (!data.activityLog) data.activityLog = [];
   }
 
-  // 2. Try to init Firebase
-  const fbCfg = getFirebaseConfig();
+  // 2. Нэвтрэх хуудасны товч идэвхжүүлнэ
+  updateSyncStatus('offline');
+
+  // 3. Firebase тохируулга авна (hardcoded эсвэл localStorage)
+  let fbCfg = getFirebaseConfig();
+
+  // 4. Хэрэв тохируулга байхгүй бол — localStorage-д кэш хадгалагдсан байж болно
+  if (!fbCfg || !fbCfg.apiKey) {
+    const cached = loadCachedConfig();
+    if (cached) fbCfg = cached;
+  }
+
   if (fbCfg && fbCfg.apiKey && fbCfg.projectId) {
+    // Firebase-г background-д ачаалж, нэвтрэхийг хаахгүй
     const ok = initFirebase(fbCfg);
     if (ok) {
-      // 3. Load config from Firestore
-      const cloudData = await loadFromCloud();
-      if (cloudData && cloudData.users) {
-        const preservedUser = data.currentUser;
-        data = { ...data, ...cloudData };
-        if (!data.activityLog) data.activityLog = [];
-        if (preservedUser) data.currentUser = preservedUser;
-        saveLocal();
+      updateSyncStatus('syncing');
+      try {
+        // Cloud-аас тохируулга татна (timeout: 8 секунд)
+        const cloudPromise = loadFromCloud();
+        const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 8000));
+        const cloudData = await Promise.race([cloudPromise, timeoutPromise]);
+        if (cloudData && cloudData.users) {
+          const preservedUser = data.currentUser;
+          data = { ...data, ...cloudData };
+          if (!data.activityLog) data.activityLog = [];
+          if (preservedUser) data.currentUser = preservedUser;
+          saveLocal();
+        }
+        // Submissions татна (timeout: 8 секунд)
+        const subsPromise = loadSubmissionsFromCloud();
+        const subsTimeout = new Promise(resolve => setTimeout(() => resolve(null), 8000));
+        const subs = await Promise.race([subsPromise, subsTimeout]);
+        if (subs) { data.submissions = subs; saveLocal(); }
+        // Real-time listener эхлүүлнэ
+        startSubmissionsListener();
+        updateSyncStatus('idle');
+      } catch(e) {
+        console.warn('Firebase load failed, using local data:', e);
+        updateSyncStatus('offline');
       }
-      // 4. Load submissions
-      const subs = await loadSubmissionsFromCloud();
-      if (subs) { data.submissions = subs; saveLocal(); }
-      // 5. Start real-time listener for submissions
-      startSubmissionsListener();
-      updateSyncStatus('idle');
     } else {
       updateSyncStatus('error');
     }
@@ -642,20 +729,52 @@ async function initData() {
   }
 }
 
+// Firebase config-г localStorage кэшэд хадгалах/унших (admin тохируулсан тохиолдолд)
+function loadCachedConfig() {
+  try { const s = localStorage.getItem(FB_CONFIG_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
+}
+function saveCachedConfig(cfg) {
+  try { localStorage.setItem(FB_CONFIG_KEY, JSON.stringify(cfg)); } catch {}
+}
+
 function showFirebaseSettings() {
   const cfg = getFirebaseConfig() || {};
   const connected = isFirebaseReady();
+  const isHardcoded = !!(HARDCODED_FIREBASE_CONFIG && HARDCODED_FIREBASE_CONFIG.apiKey);
   document.getElementById('modal-body').innerHTML = `
     <h3 style="font-size:18px;font-weight:900;margin-bottom:6px;">🔥 Firebase тохируулах</h3>
-    <p style="font-size:12px;color:#6b7280;margin:0 0 16px;">1000+ нэгэн зэрэг сурагчийг дэмждэг cloud storage</p>
-    ${connected ? `
+    <p style="font-size:12px;color:#6b7280;margin:0 0 16px;">500+ нэгэн зэрэг сурагчийг дэмждэг cloud storage</p>
+
+    ${isHardcoded ? `
       <div style="background:#f0fdf4;border:2px solid #bbf7d0;border-radius:12px;padding:12px;margin-bottom:16px;">
-        <p style="font-size:12px;font-weight:800;color:#166534;margin:0 0 4px;">✅ Одоо холбогдсон:</p>
+        <p style="font-size:13px;font-weight:800;color:#166534;margin:0 0 4px;">✅ Файлд тохируулга оруулсан байна</p>
+        <p style="font-size:12px;color:#166534;margin:0;">Бүх хэрэглэгч автоматаар холбогдоно. Тохируулга шаардлагагүй.</p>
+        <p style="font-family:monospace;font-size:11px;color:#374151;margin:6px 0 0;">${cfg.projectId}</p>
+      </div>` : connected ? `
+      <div style="background:#f0fdf4;border:2px solid #bbf7d0;border-radius:12px;padding:12px;margin-bottom:16px;">
+        <p style="font-size:12px;font-weight:800;color:#166534;margin:0 0 4px;">✅ Энэ төхөөрөмж холбогдсон:</p>
         <p style="font-family:monospace;font-size:13px;color:#1e293b;margin:0;">${cfg.projectId}</p>
+        <p style="font-size:11px;color:#6b7280;margin:6px 0 0;">⚠️ Бусад хэрэглэгч тус тусдаа тохируулах шаардлагатай.<br>Бүгдэд автоматаар холбогдуулахыг хүсвэл доорх зааврыг дагана уу.</p>
       </div>` : `
       <div style="background:#fef9c3;border:2px solid #fde68a;border-radius:12px;padding:12px;margin-bottom:16px;">
         <p style="font-size:12px;font-weight:800;color:#92400e;margin:0;">⚠️ Firebase холбогдоогүй байна. Доор тохируулга оруулна уу.</p>
       </div>`}
+
+    ${!isHardcoded ? `
+    <div style="background:#eff6ff;border:2px solid #bfdbfe;border-radius:12px;padding:14px;margin-bottom:16px;">
+      <p style="font-size:13px;font-weight:900;color:#1d4ed8;margin:0 0 8px;">🚀 Бүх хэрэглэгчид автоматаар холбогдуулах арга:</p>
+      <p style="font-size:12px;color:#374151;margin:0 0 6px;">HTML файлын <strong>HARDCODED_FIREBASE_CONFIG</strong> хэсгийн тайлбарыг арилгаж, өөрийн тохируулгыг оруулна уу:</p>
+      <div style="background:#1e293b;border-radius:8px;padding:12px;font-family:monospace;font-size:11px;color:#e2e8f0;overflow-x:auto;">
+const HARDCODED_FIREBASE_CONFIG = {<br>
+&nbsp;&nbsp;apiKey: "<span style="color:#86efac;">${cfg.apiKey ? cfg.apiKey.substring(0,8)+'...' : 'AIzaSy...'}</span>",<br>
+&nbsp;&nbsp;projectId: "<span style="color:#86efac;">${cfg.projectId || 'school87-xxxxx'}</span>",<br>
+&nbsp;&nbsp;appId: "<span style="color:#86efac;">${cfg.appId || '1:xxx:web:xxx'}</span>",<br>
+&nbsp;&nbsp;authDomain: "<span style="color:#86efac;">${cfg.projectId ? cfg.projectId+'.firebaseapp.com' : '...'}</span>",<br>
+&nbsp;&nbsp;storageBucket: "<span style="color:#86efac;">${cfg.projectId ? cfg.projectId+'.appspot.com' : '...'}</span>"<br>
+};
+      </div>
+    </div>
+
     <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">
       <div>
         <label style="font-size:12px;font-weight:800;color:#374151;display:block;margin-bottom:4px;">apiKey *</label>
@@ -674,10 +793,11 @@ function showFirebaseSettings() {
       <button onclick="saveFirebaseSettings()" class="btn-primary">🔥 Хадгалж холбох</button>
       ${connected ? `<button onclick="migrateFromLocal()" class="btn-primary" style="background:linear-gradient(135deg,#10b981,#059669);">☁️ Локал өгөгдлийг Firebase-д байршуулах</button>` : ''}
       ${connected ? `<button onclick="disconnectFirebase()" style="width:100%;padding:14px;background:#fef2f2;color:#dc2626;border:2px solid #fecaca;border-radius:12px;font-weight:800;cursor:pointer;">🔌 Firebase хасах</button>` : ''}
-    </div>
-    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:12px;margin-top:14px;font-size:12px;color:#1d4ed8;">
-      <strong>Firebase Console → Project Settings → Your apps</strong>-аас тохируулгыг авна уу.
-    </div>
+    </div>` : `
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      ${connected ? `<button onclick="migrateFromLocal()" class="btn-primary" style="background:linear-gradient(135deg,#10b981,#059669);">☁️ Локал өгөгдлийг Firebase-д байршуулах</button>` : ''}
+    </div>`}
+
     <button onclick="closeModal()" style="width:100%;margin-top:12px;padding:14px;background:#f3f4f6;border:none;border-radius:12px;font-weight:800;color:#374151;cursor:pointer;">Хаах</button>`;
   document.getElementById('modal').classList.remove('hidden');
 }
@@ -697,6 +817,12 @@ async function saveFirebaseSettings() {
   const ok = initFirebase(cfg);
   if (!ok) { alert('❌ Firebase холбогдоход алдаа гарлаа. Тохируулгаа шалгана уу.'); return; }
   updateSyncStatus('syncing');
+
+  // Config-ийг Firestore meta doc-д хадгална — бусад хэрэглэгч автоматаар авна
+  try {
+    await db.collection('school87').doc('meta').set({ firebaseConfig: cfg, updatedAt: new Date().toISOString() });
+  } catch(e) { console.warn('Meta save failed:', e); }
+
   const cloudData = await loadFromCloud();
   if (cloudData && cloudData.users) {
     const preservedUser = data.currentUser;
@@ -709,7 +835,7 @@ async function saveFirebaseSettings() {
   saveLocal();
   updateSyncStatus('idle');
   closeModal();
-  alert('✅ Firebase амжилттай холбогдлоо!\n\nОдоо ' + (data.submissions.length) + ' илгээлт татагдсан байна.');
+  alert('✅ Firebase амжилттай холбогдлоо!\n\nОдоо ' + (data.submissions.length) + ' илгээлт татагдсан байна.\n\n📢 Бусад хэрэглэгч апп нээхэд автоматаар холбогдоно.');
   render();
 }
 
@@ -717,14 +843,17 @@ async function migrateFromLocal() {
   if (!confirm('Локал өгөгдлийг Firebase-д байршуулах уу? Хуучин cloud өгөгдөл дарагдана.')) return;
   closeModal();
   updateSyncStatus('syncing');
-  // Upload config
+  // Upload config + users
   await saveToCloud();
   // Upload submissions
   const subs = data.submissions || [];
   let count = 0;
-  for (const sub of subs) {
-    await saveSubmissionToCloud(sub);
-    count++;
+  // Batch upload: 10-аар зэрэг илгээнэ (хурдан)
+  const batchSize = 10;
+  for (let i = 0; i < subs.length; i += batchSize) {
+    const batch = subs.slice(i, i + batchSize);
+    await Promise.all(batch.map(sub => saveSubmissionToCloud(sub)));
+    count += batch.length;
   }
   updateSyncStatus('synced');
   alert(`✅ ${count} илгээлт байршуулагдлаа!`);
@@ -782,9 +911,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   const p2 = document.getElementById('prefix2');
   GRADES_NUM.forEach(n => { p1.innerHTML += `<option value="${n}">${n}</option>`; });
   GROUPS.forEach(g => { p2.innerHTML += `<option value="${g}">${g}</option>`; });
-  await initData();
+  // Локал өгөгдлийг хурдан ачаалж, нэвтрэх боломжтой болгоно
+  const localData = loadLocal();
+  if (localData && localData.users) {
+    data = { ...data, ...localData };
+    if (!data.activityLog) data.activityLog = [];
+  }
+  updateSyncStatus('offline');
+  // Хэрэв аль хэдийн нэвтэрсэн байвал тэр даруй апп харуулна
   if (data.currentUser) setTimeout(() => showApp(), 100);
-  updateSyncStatus(syncStatus);
+  // Firebase-г ар талд ачаална (нэвтрэхийг хаахгүй)
+  initData();
 });
 
 function switchLoginTab(tab) {
@@ -1723,7 +1860,6 @@ function selfToggleTeacherClass(className) {
   saveData(); render();
 }
 
-function showAddUserModal
 function showAddUserModal(defaultRole) {
   const isAdmin = data.currentUser.role === 'admin';
   document.getElementById('modal-body').innerHTML = `
@@ -2299,62 +2435,6 @@ function clearActivityLog() {
 }
 
 // ============ STUDENT HOME ============
-function renderStudentHome() {
-  const user = data.currentUser;
-  const mySubmissions = data.submissions.filter(s => s.studentId === user.id);
-  const availableExams = data.exams.filter(e => e.status === 'active');
-  return `
-    <div style="background:linear-gradient(135deg,#10b981,#059669);border-radius:20px;padding:20px;margin-bottom:16px;color:white;">
-      <p style="opacity:0.8;font-size:13px;margin:0 0 4px;">${user.grade||''} анги</p>
-      <h2 style="font-size:22px;font-weight:900;margin:0;">Сайн уу, ${user.name.split('.')[1]||user.name}! 👋</h2>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
-      <div class="stat-card" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);">
-        <div style="font-size:28px;font-weight:900;">${availableExams.length}</div>
-        <div style="font-size:11px;opacity:0.85;">📝 Боломжтой сорил</div>
-      </div>
-      <div class="stat-card" style="background:linear-gradient(135deg,#10b981,#059669);cursor:pointer;" onclick="navigate('my-results')">
-        <div style="font-size:28px;font-weight:900;">${mySubmissions.length}</div>
-        <div style="font-size:11px;opacity:0.85;">✅ Өгсөн шалгалт →</div>
-      </div>
-    </div>
-    <p class="section-title">📚 Боломжтой сорилууд</p>
-    <div>
-      ${availableExams.length === 0 ? `
-        <div style="text-align:center;padding:40px;background:white;border-radius:20px;color:#9ca3af;">
-          <div style="font-size:48px;margin-bottom:12px;">📝</div>
-          <p style="font-weight:700;">Боломжтой сорил байхгүй</p>
-        </div>` :
-        availableExams.map(exam => {
-          const done = mySubmissions.find(s => s.examId === exam.id);
-          return `
-          <div class="card" style="padding:16px;margin-bottom:10px;">
-            <h4 style="font-weight:900;font-size:15px;margin:0 0 6px;">${exam.title}</h4>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
-              <span class="badge" style="background:#dbeafe;color:#1d4ed8;">${exam.subject}</span>
-              <span class="badge" style="background:#ede9fe;color:#6d28d9;">${exam.questions.length} асуулт</span>
-              <span class="badge" style="background:#dcfce7;color:#166534;">${exam.duration} мин</span>
-            </div>
-            ${done ? `
-              <div style="display:flex;align-items:center;justify-content:space-between;background:${done.passed?'#f0fdf4':'#fef2f2'};border-radius:12px;padding:12px;">
-                <span style="font-weight:700;color:${done.passed?'#166534':'#991b1b'};">${done.passed?'✅ Тэнцсэн':'❌ Унасан'}</span>
-                <span style="font-weight:900;font-size:20px;color:${done.passed?'#166534':'#991b1b'};">${done.percentage}%</span>
-              </div>` : `
-              <button onclick="startExam(${exam.id})" class="btn-primary btn-green">🚀 Шалгалт эхлүүлэх</button>`}
-          </div>`;
-        }).join('')}
-    </div>
-    ${data.announcements.length > 0 ? `
-    <p class="section-title" style="margin-top:16px;">📢 Санамж</p>
-    <div>
-      ${data.announcements.slice(0,3).map(a => `
-        <div class="ann-card">
-          <div style="font-weight:900;font-size:14px;margin-bottom:4px;">${a.title}</div>
-          <div style="font-size:13px;color:#374151;white-space:pre-wrap;">${a.content}</div>
-          <div style="font-size:11px;color:#9ca3af;margin-top:6px;">📅 ${a.date}</div>
-        </div>`).join('')}
-    </div>` : ''}`;
-}
 
 // ============ TAKING EXAM ============
 function startExam(examId) {
@@ -2452,16 +2532,17 @@ async function submitExam() {
     answers, score, percentage, passed: score >= exam.passingScore
   };
 
-  // Save to Firestore directly (no conflict possible — own document)
-  const saved = await saveSubmissionToCloud(submission);
-  if (!saved) {
-    // Fallback: save locally
-    data.submissions.push(submission);
-    saveData();
-  } else {
-    // Also update local cache
-    data.submissions.push(submission);
-    saveLocal();
+  // Эхлээд локалд хадгална — алдаа гарсан ч дүн алдагдахгүй
+  data.submissions.push(submission);
+  saveLocal();
+
+  // Firebase-д хадгалах (байвал)
+  if (isFirebaseReady()) {
+    try {
+      await saveSubmissionToCloud(submission);
+    } catch(e) {
+      console.warn('Firebase submission save failed, keeping local:', e);
+    }
   }
 
   logActivity('Сорил өгсөн', `"${exam.title}" - ${score}/${exam.totalPoints} (${percentage}%, ${submission.passed?'тэнцсэн':'унасан'})`);
