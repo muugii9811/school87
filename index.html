@@ -389,6 +389,7 @@
 const STORAGE_KEY = 'school87_data_v6';
 const BIN_ID_KEY = 'school87_bin_id_v6';
 const JSONBIN_BASE = 'https://api.jsonbin.io/v3';
+const JSONBIN_API_KEY = '$2a$10$/ICj4/0kvfEnSiZH5Fi0l.vsT14TjWUte8HNWwYmud8wiDn/BmB9W';
 
 let syncStatus = 'idle';
 let lastSyncTime = null;
@@ -458,7 +459,7 @@ async function createNewBin() {
   try {
     const response = await fetch(`${JSONBIN_BASE}/b`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Bin-Private': 'false', 'X-Bin-Name': 'school87-data-' + Date.now() },
+      headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_API_KEY, 'X-Bin-Private': 'false', 'X-Bin-Name': 'school87-data-' + Date.now() },
       body: JSON.stringify(data)
     });
     if (!response.ok) throw new Error('Create failed');
@@ -475,7 +476,7 @@ async function saveToCloud() {
     updateSyncStatus('syncing');
     const response = await fetch(`${JSONBIN_BASE}/b/${binId}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'X-Bin-Versioning': 'false' },
+      headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_API_KEY, 'X-Bin-Versioning': 'false' },
       body: JSON.stringify(data)
     });
     if (!response.ok) throw new Error('Update failed');
@@ -489,7 +490,7 @@ async function loadFromCloud() {
   if (!binId) return null;
   try {
     updateSyncStatus('syncing');
-    const response = await fetch(`${JSONBIN_BASE}/b/${binId}/latest`, { headers: { 'X-Bin-Meta': 'false' } });
+    const response = await fetch(`${JSONBIN_BASE}/b/${binId}/latest`, { headers: { 'X-Master-Key': JSONBIN_API_KEY, 'X-Bin-Meta': 'false' } });
     if (!response.ok) throw new Error('Load failed');
     const cloudData = await response.json();
     updateSyncStatus('synced');
