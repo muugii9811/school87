@@ -286,28 +286,18 @@
     <!-- Student form -->
     <div id="form-student" class="space-y-3 hidden">
       <div>
-        <label style="font-size:13px;font-weight:800;color:#374151;display:block;margin-bottom:6px;">Анги / Бүлэг / РД дугаар</label>
-        <div style="display:flex;gap:8px;">
-          <select id="prefix1" style="flex:1;padding:14px 8px;border:2px solid #e5e7eb;border-radius:12px;text-align:center;font-weight:800;font-size:16px!important;">
-            <option value="">-</option>
-          </select>
-          <select id="prefix2" style="flex:1;padding:14px 8px;border:2px solid #e5e7eb;border-radius:12px;text-align:center;font-weight:800;font-size:16px!important;">
-            <option value="">-</option>
-          </select>
-          <input type="number" id="reg-number" placeholder="0001" maxlength="4" inputmode="numeric"
-            style="flex:1.5;padding:14px 8px;border:2px solid #e5e7eb;border-radius:12px;text-align:center;font-weight:800;font-size:20px!important;letter-spacing:0.1em;">
-        </div>
-        <p style="font-size:11px;color:#9ca3af;margin-top:4px;">Анги (1-12) + Бүлэг (А-М) + РД (4 тоо)</p>
+        <label style="font-size:13px;font-weight:800;color:#374151;display:block;margin-bottom:6px;">Нэвтрэх код (РД дугаар)</label>
+        <input type="text" id="student-username" placeholder="Жишээ: 10А0001"
+          class="input-field" style="text-align:center;font-family:monospace;letter-spacing:0.1em;font-size:20px!important;font-weight:700;">
+        <p style="font-size:11px;color:#9ca3af;margin-top:4px;">Анги + Бүлэг + РД дугаар (жш: 10А0001)</p>
       </div>
       <div>
-        <label style="font-size:13px;font-weight:800;color:#374151;display:block;margin-bottom:6px;">Сорилын нууц код (4 оронтой)</label>
-        <input type="text" id="exam-code" placeholder="_ _ _ _" maxlength="4" inputmode="numeric"
-          class="input-field" style="text-align:center;font-weight:900;letter-spacing:0.5em;font-size:28px!important;"
-          onkeydown="if(event.key==='Enter') handleLogin()">
-        <p style="font-size:11px;color:#9ca3af;margin-top:4px;">Багшаас авсан 4 оронтой код</p>
+        <label style="font-size:13px;font-weight:800;color:#374151;display:block;margin-bottom:6px;">Нууц үг</label>
+        <input type="password" id="student-password" placeholder="••••••"
+          class="input-field" onkeydown="if(event.key==='Enter') handleLogin()">
       </div>
       <div id="login-error-student" class="hidden" style="padding:12px;background:#fef2f2;border:2px solid #fecaca;border-radius:12px;color:#dc2626;font-size:13px;font-weight:700;"></div>
-      <button onclick="handleLogin()" class="btn-primary btn-green" style="margin-top:8px;">ШАЛГАЛТ ӨГӨХ →</button>
+      <button onclick="handleLogin()" class="btn-primary btn-green" style="margin-top:8px;">НЭВТРЭХ →</button>
       <button type="button" onclick="showAnnouncementsModal()" style="display:block;width:100%;padding:14px;background:#fce7f3;color:#be185d;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer;">📢 САНАМЖ ХАРАХ</button>
     </div>
   </div>
@@ -443,11 +433,15 @@ function saveLocal() {
 function loadLocal() {
   try { const s = localStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : null; } catch(e) { return null; }
 }
+const DEFAULT_BIN_ID = '6a07f5f8e41b4d34f87c1234';
 function getBinId() {
   const urlParams = new URLSearchParams(window.location.search);
   const urlBin = urlParams.get('bin');
   if (urlBin) { localStorage.setItem(BIN_ID_KEY, urlBin); return urlBin; }
-  return localStorage.getItem(BIN_ID_KEY);
+  const stored = localStorage.getItem(BIN_ID_KEY);
+  if (stored) return stored;
+  localStorage.setItem(BIN_ID_KEY, DEFAULT_BIN_ID);
+  return DEFAULT_BIN_ID;
 }
 function setBinId(id) {
   localStorage.setItem(BIN_ID_KEY, id);
@@ -692,28 +686,18 @@ function handleTeacherLogin() {
   showApp();
 }
 function handleStudentLogin() {
-  const grade = document.getElementById('prefix1').value;
-  const group = document.getElementById('prefix2').value;
-  const num = (document.getElementById('reg-number').value || '').toString().padStart(4,'0');
-  const examCode = (document.getElementById('exam-code').value || '').trim();
+  const reg = (document.getElementById('student-username').value || '').trim();
+  const pwd = (document.getElementById('student-password').value || '').trim();
   const errBox = document.getElementById('login-error-student');
-  if (!grade || !group || num.length < 4 || !/^\d{4}$/.test(num)) {
-    errBox.textContent = 'Анги, бүлэг, РД дугаараа бүгдийг оруулна уу!'; errBox.classList.remove('hidden'); return;
-  }
-  if (!examCode || examCode.length !== 4) {
-    errBox.textContent = 'Багшийн сорилын 4 оронтой кодыг оруулна уу!'; errBox.classList.remove('hidden'); return;
-  }
-  const reg = grade + group + num;
-  let student = data.users.find(u => u.role === 'student' && u.regNumber === reg);
-  if (!student) { errBox.textContent = 'Энэ РД дугаартай сурагч бүртгэлгүй байна! Багшдаа хандана уу.'; errBox.classList.remove('hidden'); return; }
-  const exam = data.exams.find(e => e.examCode === examCode && e.status === 'active');
-  if (!exam) { errBox.textContent = 'Сорилын код буруу эсвэл сорил идэвхгүй байна!'; errBox.classList.remove('hidden'); return; }
+  if (!reg) { errBox.textContent = 'Нэвтрэх кодоо оруулна уу!'; errBox.classList.remove('hidden'); return; }
+  if (!pwd) { errBox.textContent = 'Нууц үгээ оруулна уу!'; errBox.classList.remove('hidden'); return; }
+  const student = data.users.find(u => u.role === 'student' && u.regNumber === reg && u.password === pwd);
+  if (!student) { errBox.textContent = 'Нэвтрэх код эсвэл нууц үг буруу байна!'; errBox.classList.remove('hidden'); return; }
   errBox.classList.add('hidden');
   data.currentUser = student;
-  logActivity('Нэвтрэлт', `Сурагч ${student.name} (${reg}) "${exam.title}" сорилд орлоо`);
+  logActivity('Нэвтрэлт', `Сурагч ${student.name} (${reg}) нэвтэрлээ`);
   saveData();
   showApp();
-  setTimeout(() => startExam(exam.id), 200);
 }
 function logout() {
   if (data.currentUser) logActivity('Гарах', `${data.currentUser.name} системээс гарлаа`);
@@ -723,8 +707,8 @@ function logout() {
   document.getElementById('login-page').style.display = '';
   document.getElementById('teacher-username').value = '';
   document.getElementById('teacher-password').value = '';
-  document.getElementById('reg-number').value = '';
-  document.getElementById('exam-code').value = '';
+  document.getElementById('student-username').value = '';
+  document.getElementById('student-password').value = '';
   document.getElementById('bottom-nav').classList.add('hidden');
   document.getElementById('bottom-nav-student').classList.add('hidden');
   switchLoginTab('teacher');
