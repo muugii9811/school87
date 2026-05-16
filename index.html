@@ -11,6 +11,9 @@
   <title>87 дугаар сургуулийн цахим шалгалт</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore-compat.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
 
@@ -400,16 +403,353 @@
 </div>
 
 <script>
-// ============ CLOUD STORAGE CONFIG ============
-const STORAGE_KEY = 'school87_data_v6';
-const BIN_ID_KEY = 'school87_bin_id_v6';
-const JSONBIN_BASE = 'https://api.jsonbin.io/v3';
-const JSONBIN_API_KEY = '$2a$10$qvNMp7YZvW/xl8IxAkG5celYHoXj2PGi5iQSn.oEw7MA0atVEi5u.';
+// ============ FIREBASE CLOUD STORAGE ============
+// 🔥 Нэгэн зэрэг 1000+ сурагч сорил өгч болно
+// Шийдэл: Submission бүр өөрийн тусдаа Firestore документ
+// → Race condition байхгүй, scale хязгааргүй
 
+const STORAGE_KEY  = 'school87_data_v6';
+const FB_CFG_KEY   = 'school87_firebase_cfg_v1';
+
+// Firestore collections
+const C_CONFIG = 'school87_config';   // Announcements, classes, subjects...
+const C_USERS  = 'school87_users';    // Нэг хэрэглэгч = нэг document
+const C_EXAMS  = 'school87_exams';    // Нэг шалгалт = нэг document
+const C_SUBS   = 'school87_subs';     // ⚡ Нэг сурагчийн хариулт = нэг document (race-condition-free!)
+
+let db = null;
 let syncStatus = 'idle';
 let lastSyncTime = null;
-let syncTimeout = null;
-let pollInterval = null;
+let saveTimeout = null;
+let subListener = null;   // Real-time listener for teachers
+
+// ── Firebase init ──
+function getFBConfig() {
+  try { return JSON.parse(localStorage.getItem(FB_CFG_KEY)); } catch { return null; }
+}
+function storeFBConfig(cfg) { localStorage.setItem(FB_CFG_KEY, JSON.stringify(cfg)); }
+
+function initFirebase(cfg) {
+  try {
+    if (!cfg || !cfg.projectId || !cfg.apiKey) return false;
+    if (firebase.apps.length) {
+      firebase.apps.forEach(app => app.delete());
+    }
+    firebase.initializeApp(cfg);
+    db = firebase.firestore();
+    return true;
+  } catch(e) { console.error('Firebase init:', e); db = null; return false; }
+}
+
+// ── Local storage fallback ──
+function saveLocal() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch(e) {}
+}
+function loadLocal() {
+  try { const s = localStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
+}
+
+// ── Sync status ──
+function updateSyncStatus(status) {
+  syncStatus = status;
+  const el = document.getElementById('sync-indicator');
+  if (!el) return;
+  const map = {
+    syncing: ['🔄','Синхрончилж...','rgba(255,255,255,0.6)'],
+    synced:  ['✅','Хадгалагдсан','rgba(255,255,255,0.85)'],
+    error:   ['⚠️','Алдаа','#fca5a5'],
+    offline: ['📱','Локал','rgba(255,255,255,0.6)'],
+    idle:    ['💾','Бэлэн','rgba(255,255,255,0.6)']
+  };
+  const [icon, text, color] = map[status] || map.idle;
+  el.innerHTML = `<span style="color:${color};font-size:11px;font-weight:700;cursor:pointer;" onclick="showSyncSettings()">${icon} ${text}</span>`;
+}
+
+// ── Load all data from Firestore ──
+async function loadFromCloud() {
+  if (!db) return null;
+  try {
+    updateSyncStatus('syncing');
+    const [cfgSnap, usersSnap, examsSnap, subsSnap] = await Promise.all([
+      db.collection(C_CONFIG).doc('main').get(),
+      db.collection(C_USERS).get(),
+      db.collection(C_EXAMS).get(),
+      db.collection(C_SUBS).get(),
+    ]);
+    const cfg  = cfgSnap.exists ? cfgSnap.data() : {};
+    const users = usersSnap.docs.map(d => ({...d.data()}));
+    const exams = examsSnap.docs.map(d => ({...d.data()}));
+    const submissions = subsSnap.docs.map(d => d.data());
+    updateSyncStatus('synced');
+    lastSyncTime = new Date();
+    return { ...cfg, users, exams, submissions, currentUser: null, activityLog: [] };
+  } catch(e) {
+    console.error('Load cloud error:', e);
+    updateSyncStatus('error');
+    return null;
+  }
+}
+
+// ── Save config + users + exams (admin/teacher operations, low concurrency) ──
+async function saveToCloud() {
+  if (!db) { saveLocal(); return; }
+  updateSyncStatus('syncing');
+  try {
+    // Use batched writes for atomicity
+    const batch = db.batch();
+
+    // 1) Config document
+    batch.set(db.collection(C_CONFIG).doc('main'), {
+      announcements: data.announcements || [],
+      classes:       data.classes       || [],
+      subjects:      data.subjects      || [],
+      posters:       data.posters       || [],
+      ads:           data.ads           || [],
+      sentAnalyses:  data.sentAnalyses  || [],
+      updatedAt:     new Date().toISOString()
+    });
+
+    // 2) Users — each user = its own document
+    (data.users || []).forEach(u => {
+      batch.set(db.collection(C_USERS).doc(String(u.id)), u);
+    });
+
+    // 3) Exams — each exam = its own document
+    (data.exams || []).forEach(e => {
+      batch.set(db.collection(C_EXAMS).doc(String(e.id)), e);
+    });
+
+    // NOTE: Submissions are saved separately per student (see saveSubmissionCloud)
+    // They are NOT included in this batch to preserve concurrency safety
+
+    await batch.commit();
+    saveLocal();
+    updateSyncStatus('synced');
+    lastSyncTime = new Date();
+  } catch(e) {
+    console.error('Save cloud error:', e);
+    updateSyncStatus('error');
+    saveLocal();
+  }
+}
+
+// ⚡ KEY FUNCTION: Race-condition-free submission write
+// 1000 сурагч нэгэн зэрэг submit хийхэд ч алдагдахгүй
+// Учир нь: studentId + examId → unique document path
+async function saveSubmissionCloud(sub) {
+  if (!db) return false;
+  try {
+    // Document ID: "{studentId}_{examId}" → globally unique per student per exam
+    const docId = `${sub.studentId}_${sub.examId}`;
+    await db.collection(C_SUBS).doc(docId).set(sub);
+    return true;
+  } catch(e) {
+    console.error('Save submission error:', e);
+    return false;
+  }
+}
+
+// Delete exam + its submissions from Firestore
+async function deleteExamCloud(examId) {
+  if (!db) return;
+  try {
+    await db.collection(C_EXAMS).doc(String(examId)).delete();
+    const snap = await db.collection(C_SUBS).where('examId', '==', examId).get();
+    if (!snap.empty) {
+      const batch = db.batch();
+      snap.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+  } catch(e) { console.error('Delete exam cloud:', e); }
+}
+
+// Delete user from Firestore
+async function deleteUserCloud(userId) {
+  if (!db) return;
+  try { await db.collection(C_USERS).doc(String(userId)).delete(); } catch(e) {}
+}
+
+// Real-time listener: teacher sees submissions as students submit
+function startSubmissionListener(examId, onUpdate) {
+  if (!db) return;
+  if (subListener) { subListener(); subListener = null; }
+  subListener = db.collection(C_SUBS)
+    .where('examId', '==', examId)
+    .onSnapshot(snap => {
+      const subs = snap.docs.map(d => d.data());
+      // Merge into data.submissions
+      data.submissions = [
+        ...data.submissions.filter(s => s.examId !== examId),
+        ...subs
+      ];
+      if (onUpdate) onUpdate(subs);
+    }, err => console.error('Listener error:', err));
+}
+function stopSubmissionListener() {
+  if (subListener) { subListener(); subListener = null; }
+}
+
+// General saveData (debounced) — used by admin/teacher operations
+function saveData() {
+  saveLocal();
+  if (saveTimeout) clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => saveToCloud(), 1200);
+}
+
+// ── Init ──
+async function initData() {
+  // 1) Local first (instant UI)
+  const local = loadLocal();
+  if (local && local.users && local.users.length > 0) {
+    data = local;
+    if (!data.activityLog) data.activityLog = [];
+    if (!data.posters)     data.posters     = [];
+    if (!data.ads)         data.ads         = [];
+    if (!data.subjects || !data.subjects.length) data.subjects = DEFAULT_DATA.subjects;
+  } else {
+    data = JSON.parse(JSON.stringify(DEFAULT_DATA));
+  }
+
+  // 2) Try Firebase
+  const fbCfg = getFBConfig();
+  if (!fbCfg || !fbCfg.projectId) {
+    updateSyncStatus('offline');
+    return; // Run with local/default data
+  }
+  if (!initFirebase(fbCfg)) { updateSyncStatus('error'); return; }
+
+  // 3) Load from Firestore
+  const cloud = await loadFromCloud();
+  if (cloud && cloud.users && cloud.users.length > 0) {
+    const preserved = data.currentUser;
+    data = cloud;
+    if (!data.activityLog) data.activityLog = [];
+    if (!data.posters)     data.posters     = [];
+    if (!data.ads)         data.ads         = [];
+    if (!data.subjects || !data.subjects.length) data.subjects = DEFAULT_DATA.subjects;
+    if (preserved) data.currentUser = preserved;
+    saveLocal();
+  } else if (cloud && (!cloud.users || cloud.users.length === 0)) {
+    // Firestore is empty → push default data up
+    await saveToCloud();
+  }
+}
+
+// ── Login page Firebase status ──
+function updateLoginFbStatus() {
+  const cfg = getFBConfig();
+  const btn = document.getElementById('login-fb-btn');
+  if (!btn) return;
+  if (cfg && cfg.projectId) {
+    btn.innerHTML = `✅ Firebase холбогдсон — ${cfg.projectId}`;
+    btn.style.background = 'rgba(16,185,129,0.3)';
+    btn.style.borderColor = 'rgba(16,185,129,0.6)';
+  } else {
+    btn.innerHTML = `🔥 Firebase тохируулах (заавал)`;
+    btn.style.background = 'rgba(239,68,68,0.25)';
+    btn.style.borderColor = 'rgba(239,68,68,0.5)';
+  }
+}
+
+function showLoginFirebaseSetup() {
+  const cfg = getFBConfig();
+  document.getElementById('modal-body').innerHTML = `
+    <h3 style="font-size:18px;font-weight:900;margin-bottom:4px;">🔥 Firebase тохируулах</h3>
+    <p style="font-size:12px;color:#6b7280;margin:0 0 14px;">1000+ нэгэн зэрэг сурагчийг дэмждэг cloud storage</p>
+
+    ${cfg && cfg.projectId ? `
+    <div style="background:#f0fdf4;border:2px solid #bbf7d0;border-radius:12px;padding:12px;margin-bottom:14px;">
+      <p style="font-size:12px;font-weight:700;color:#166534;margin:0 0 2px;">✅ Одоо холбогдсон:</p>
+      <p style="font-size:12px;font-family:monospace;color:#374151;margin:0;">${cfg.projectId}</p>
+    </div>` : `
+    <div style="background:#fff7ed;border:2px solid #fed7aa;border-radius:12px;padding:12px;margin-bottom:14px;font-size:12px;color:#9a3412;">
+      <strong>Firebase авах алхам:</strong><br>
+      1. console.firebase.google.com → шинэ project<br>
+      2. Firestore Database → Create → Test mode<br>
+      3. ⚙️ Project Settings → Your apps → &lt;/&gt; → Register<br>
+      4. apiKey, projectId, appId хуулж доор оруулна
+    </div>`}
+
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;">
+      <div>
+        <label style="font-size:12px;font-weight:800;color:#374151;display:block;margin-bottom:5px;">apiKey *</label>
+        <input id="lf-apikey" type="text" placeholder="AIzaSy..." value="${cfg?.apiKey||''}"
+          class="input-field" style="font-size:13px!important;font-family:monospace;">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:800;color:#374151;display:block;margin-bottom:5px;">projectId *</label>
+        <input id="lf-project" type="text" placeholder="school87-xxxxx" value="${cfg?.projectId||''}"
+          class="input-field" style="font-size:13px!important;font-family:monospace;">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:800;color:#374151;display:block;margin-bottom:5px;">appId</label>
+        <input id="lf-appid" type="text" placeholder="1:123456:web:abcdef" value="${cfg?.appId||''}"
+          class="input-field" style="font-size:13px!important;font-family:monospace;">
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <button onclick="saveLoginFirebase()" class="btn-primary" style="font-size:16px;">🔥 Хадгалж холбох</button>
+      ${cfg && cfg.projectId ? `
+      <button onclick="removeFirebase()" style="width:100%;padding:14px;background:#fef2f2;color:#dc2626;border:2px solid #fecaca;border-radius:12px;font-weight:800;cursor:pointer;">🔌 Firebase хасах</button>` : ''}
+      <button onclick="closeModal()" style="width:100%;padding:14px;background:#f3f4f6;border:none;border-radius:12px;font-weight:800;color:#374151;cursor:pointer;">Хаах</button>
+    </div>`;
+  document.getElementById('modal').classList.remove('hidden');
+}
+
+async function saveLoginFirebase() {
+  const apiKey    = (document.getElementById('lf-apikey').value  || '').trim();
+  const projectId = (document.getElementById('lf-project').value || '').trim();
+  const appId     = (document.getElementById('lf-appid').value   || '').trim();
+  if (!apiKey || !projectId) { alert('apiKey болон projectId заавал оруулна уу!'); return; }
+  const cfg = {
+    apiKey, projectId,
+    appId: appId || `1:000000000000:web:000000000000`,
+    authDomain:        `${projectId}.firebaseapp.com`,
+    storageBucket:     `${projectId}.appspot.com`,
+    messagingSenderId: '',
+  };
+  storeFBConfig(cfg);
+
+  const btn = document.getElementById('modal-body').querySelector('button');
+  if (btn) { btn.textContent = '⏳ Холбож байна...'; btn.disabled = true; }
+
+  if (!initFirebase(cfg)) {
+    alert('❌ Firebase холбоход алдаа гарлаа!\nApiKey болон projectId зөв эсэхийг шалгана уу.');
+    updateLoginFbStatus();
+    closeModal();
+    return;
+  }
+
+  updateSyncStatus('syncing');
+  const cloud = await loadFromCloud();
+  if (cloud && cloud.users && cloud.users.length > 0) {
+    data = cloud;
+    if (!data.activityLog) data.activityLog = [];
+    if (!data.posters)     data.posters     = [];
+    if (!data.ads)         data.ads         = [];
+    if (!data.subjects || !data.subjects.length) data.subjects = DEFAULT_DATA.subjects;
+    saveLocal();
+    alert('✅ Firebase холбогдлоо!\n\nFirestore-с өгөгдөл амжилттай татагдлаа.');
+  } else {
+    await saveToCloud();
+    alert('✅ Firebase холбогдлоо!\n\nОдоогийн өгөгдлийг Firestore-д хадгаллаа.');
+  }
+  updateLoginFbStatus();
+  closeModal();
+}
+
+function removeFirebase() {
+  if (!confirm('Firebase тохиргоог устгах уу? Локал горимд шилжинэ.')) return;
+  localStorage.removeItem(FB_CFG_KEY);
+  db = null;
+  updateLoginFbStatus();
+  updateSyncStatus('offline');
+  closeModal();
+}
+
+// Sync settings modal (from inside app header)
+function showSyncSettings() { showLoginFirebaseSetup(); }
 
 const GROUPS = ['А','Б','В','Г','Д','Е','Ж','З','И','К','Л','М'];
 const GRADES_NUM = Array.from({length:12}, (_,i) => i+1);
@@ -464,201 +804,6 @@ const DEFAULT_DATA = {
 
 let data = JSON.parse(JSON.stringify(DEFAULT_DATA));
 
-// ============ STORAGE ============
-function saveLocal() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch(e) {}
-}
-function loadLocal() {
-  try { const s = localStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : null; } catch(e) { return null; }
-}
-const DEFAULT_BIN_ID = '6a0817ebadc21f119aaa4296';
-function getBinId() {
-  const urlParams = new URLSearchParams(window.location.search);
-  const urlBin = urlParams.get('bin');
-  if (urlBin) { localStorage.setItem(BIN_ID_KEY, urlBin); return urlBin; }
-  const stored = localStorage.getItem(BIN_ID_KEY);
-  if (stored) return stored;
-  localStorage.setItem(BIN_ID_KEY, DEFAULT_BIN_ID);
-  return DEFAULT_BIN_ID;
-}
-function setBinId(id) {
-  localStorage.setItem(BIN_ID_KEY, id);
-  const url = new URL(window.location.href);
-  url.searchParams.set('bin', id);
-  window.history.replaceState({}, '', url.toString());
-}
-async function createNewBin() {
-  try {
-    const response = await fetch(`${JSONBIN_BASE}/b`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_API_KEY, 'X-Bin-Private': 'false', 'X-Bin-Name': 'school87-data-' + Date.now() },
-      body: JSON.stringify(data)
-    });
-    if (!response.ok) throw new Error('Create failed');
-    const result = await response.json();
-    const binId = result.metadata.id;
-    setBinId(binId);
-    return binId;
-  } catch(e) { return null; }
-}
-async function saveToCloud() {
-  const binId = getBinId();
-  if (!binId) return false;
-  try {
-    updateSyncStatus('syncing');
-    const response = await fetch(`${JSONBIN_BASE}/b/${binId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_API_KEY, 'X-Bin-Versioning': 'false' },
-      body: JSON.stringify(data)
-    });
-    if (!response.ok) throw new Error('Update failed');
-    updateSyncStatus('synced');
-    lastSyncTime = new Date();
-    return true;
-  } catch(e) { updateSyncStatus('error'); return false; }
-}
-async function loadFromCloud() {
-  const binId = getBinId();
-  if (!binId) return null;
-  try {
-    updateSyncStatus('syncing');
-    const response = await fetch(`${JSONBIN_BASE}/b/${binId}/latest`, { headers: { 'X-Master-Key': JSONBIN_API_KEY, 'X-Bin-Meta': 'false' } });
-    if (!response.ok) throw new Error('Load failed');
-    const cloudData = await response.json();
-    updateSyncStatus('synced');
-    lastSyncTime = new Date();
-    return cloudData.record || cloudData;
-  } catch(e) { updateSyncStatus('offline'); return null; }
-}
-function updateSyncStatus(status) {
-  syncStatus = status;
-  const indicator = document.getElementById('sync-indicator');
-  if (!indicator) return;
-  const map = {
-    syncing: ['🔄','Синхрончилж байна...','rgba(255,255,255,0.6)'],
-    synced:  ['✅','Хадгалагдсан','rgba(255,255,255,0.8)'],
-    error:   ['⚠️','Алдаа','#fca5a5'],
-    offline: ['📱','Локал','rgba(255,255,255,0.6)'],
-    idle:    ['💾','Бэлэн','rgba(255,255,255,0.6)']
-  };
-  const [icon, text, color] = map[status] || map.idle;
-  indicator.innerHTML = `<span style="color:${color};font-size:11px;font-weight:700;cursor:pointer;" onclick="showSyncSettings()">${icon} ${text}</span>`;
-}
-function saveData() {
-  saveLocal();
-  if (syncTimeout) clearTimeout(syncTimeout);
-  syncTimeout = setTimeout(async () => {
-    const binId = getBinId();
-    if (binId) await saveToCloud();
-    else updateSyncStatus('offline');
-  }, 1000);
-}
-async function initData() {
-  const localData = loadLocal();
-  if (localData && localData.users) {
-    data = localData;
-    if (!data.activityLog) data.activityLog = [];
-    if (!data.posters) data.posters = [];
-    if (!data.ads) data.ads = [];
-  }
-  const binId = getBinId();
-  if (binId) {
-    const cloudData = await loadFromCloud();
-    if (cloudData && cloudData.users) {
-      data = cloudData;
-      if (!data.activityLog) data.activityLog = [];
-      if (!data.posters) data.posters = [];
-      if (!data.ads) data.ads = [];
-      saveLocal();
-    }
-  } else {
-    updateSyncStatus('offline');
-  }
-  if (binId && !pollInterval) {
-    pollInterval = setInterval(async () => {
-      if (syncStatus === 'syncing') return;
-      const cloudData = await loadFromCloud();
-      if (cloudData && cloudData.users) {
-        const cloudLogCount = (cloudData.activityLog||[]).length;
-        const localLogCount = (data.activityLog||[]).length;
-        if (cloudLogCount !== localLogCount ||
-            JSON.stringify(cloudData.users.length) !== JSON.stringify(data.users.length) ||
-            JSON.stringify(cloudData.exams.length) !== JSON.stringify(data.exams.length)) {
-          const preservedUser = data.currentUser;
-          data = cloudData;
-          if (!data.activityLog) data.activityLog = [];
-          if (preservedUser) data.currentUser = preservedUser;
-          saveLocal();
-          if (preservedUser && (preservedUser.role === 'admin') && currentView === 'activity-log') render();
-        }
-      }
-    }, 30000);
-  }
-}
-
-function showSyncSettings() {
-  const currentBin = getBinId() || '(тохируулаагүй)';
-  const url = window.location.href.split('?')[0];
-  const fullUrl = currentBin && currentBin !== '(тохируулаагүй)' ? `${url}?bin=${currentBin}` : url;
-  document.getElementById('modal-body').innerHTML = `
-    <h3 style="font-size:18px;font-weight:900;margin-bottom:16px;">☁️ Cloud синхрончлол</h3>
-    ${currentBin !== '(тохируулаагүй)' ? `
-      <div style="background:#f0fdf4;border:2px solid #bbf7d0;border-radius:12px;padding:12px;margin-bottom:16px;">
-        <p style="font-size:12px;font-weight:700;color:#166534;margin:0 0 6px;">✅ Холбогдсон Bin ID:</p>
-        <p style="font-family:monospace;font-size:12px;color:#1e293b;word-break:break-all;margin:0 0 8px;">${currentBin}</p>
-        <button onclick="navigator.clipboard.writeText('${fullUrl}').then(()=>alert('URL хуулагдсан!'))" style="background:#22c55e;color:white;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;">📋 URL хуулах</button>
-      </div>` : ''}
-    <div style="display:flex;flex-direction:column;gap:10px;">
-      <button onclick="setupNewCloud()" class="btn-primary">☁️ Шинэ Cloud үүсгэх</button>
-      <div>
-        <label style="font-size:13px;font-weight:800;display:block;margin-bottom:6px;">Bin ID оруулах:</label>
-        <div style="display:flex;gap:8px;">
-          <input id="bin-input" type="text" placeholder="67xxxxx..." class="input-field" style="flex:1;">
-          <button onclick="connectToBin()" style="background:#10b981;color:white;border:none;border-radius:12px;padding:14px 18px;font-weight:800;cursor:pointer;">Холбох</button>
-        </div>
-      </div>
-      <button onclick="disconnectCloud()" style="width:100%;padding:14px;background:#f3f4f6;border:none;border-radius:12px;font-weight:800;color:#374151;cursor:pointer;">🔌 Cloud-аас салгах</button>
-      <button onclick="forceSync()" style="width:100%;padding:14px;background:#6366f1;color:white;border:none;border-radius:12px;font-weight:800;cursor:pointer;">🔄 Одоо синхрончлох</button>
-    </div>
-    <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:12px;padding:12px;margin-top:14px;font-size:12px;color:#92400e;">
-      <strong>Анхаар:</strong> Cloud Sync асаалттай үед өгөгдөл бүх төхөөрөмжид автоматаар синхрончлогдоно.
-    </div>
-    <button onclick="closeModal()" style="width:100%;margin-top:14px;padding:14px;background:#f3f4f6;border:none;border-radius:12px;font-weight:800;color:#374151;cursor:pointer;">Хаах</button>
-  `;
-  document.getElementById('modal').classList.remove('hidden');
-}
-
-async function setupNewCloud() {
-  if (!confirm('Шинэ cloud storage үүсгэх үү?')) return;
-  updateSyncStatus('syncing');
-  const binId = await createNewBin();
-  if (binId) { alert('✅ Cloud үүсгэгдлээ!\n\nBin ID: ' + binId + '\n\nURL-г бусад төхөөрөмжид хуулна уу.'); closeModal(); showSyncSettings(); }
-  else alert('❌ Cloud үүсгэхэд алдаа гарлаа. Интернэт холболтоо шалгана уу.');
-}
-async function connectToBin() {
-  const id = document.getElementById('bin-input').value.trim();
-  if (!id) { alert('Bin ID оруулна уу'); return; }
-  setBinId(id);
-  updateSyncStatus('syncing');
-  const cloudData = await loadFromCloud();
-  if (cloudData && cloudData.users) {
-    data = cloudData;
-    if (!data.activityLog) data.activityLog = [];
-    saveLocal();
-    alert('✅ Холбогдлоо!'); closeModal(); render();
-  } else alert('❌ Bin ID олдсонгүй.');
-}
-function disconnectCloud() {
-  if (!confirm('Cloud-аас салгах уу?')) return;
-  localStorage.removeItem(BIN_ID_KEY);
-  const url = new URL(window.location.href);
-  url.searchParams.delete('bin');
-  window.history.replaceState({}, '', url.toString());
-  if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-  updateSyncStatus('offline'); closeModal();
-}
-async function forceSync() { await saveToCloud(); alert('Синхрончлогдлоо!'); }
-
 // ============ ACTIVITY LOG ============
 function logActivity(action, details) {
   if (!data.activityLog) data.activityLog = [];
@@ -691,8 +836,8 @@ let logSearchQuery = '';
 document.addEventListener('DOMContentLoaded', async () => {
   const p1 = document.getElementById('prefix1');
   const p2 = document.getElementById('prefix2');
-  GRADES_NUM.forEach(n => { p1.innerHTML += `<option value="${n}">${n}</option>`; });
-  GROUPS.forEach(g => { p2.innerHTML += `<option value="${g}">${g}</option>`; });
+  if (p1) GRADES_NUM.forEach(n => { p1.innerHTML += `<option value="${n}">${n}</option>`; });
+  if (p2) GROUPS.forEach(g => { p2.innerHTML += `<option value="${g}">${g}</option>`; });
   await initData();
   if (data.currentUser) setTimeout(() => showApp(), 100);
   updateSyncStatus(syncStatus);
@@ -896,12 +1041,18 @@ function renderAdminDashboard() {
       <button class="menu-btn" onclick="navigate('analytics')">
         <span class="icon">📈</span><span class="label">Статистик</span>
       </button>
+      <button class="menu-btn" onclick="showLoginFirebaseSetup()" style="border:2px solid #fee2e2;">
+        <span class="icon">🔥</span><span class="label" style="color:#dc2626;">Firebase</span>
+      </button>
       ` : `
       <button class="menu-btn" onclick="navigate('analytics')">
         <span class="icon">📈</span><span class="label">Статистик</span>
       </button>
       <button class="menu-btn" onclick="navigate('posters')">
         <span class="icon">📢</span><span class="label">Зар & Мэдэгдэл</span>
+      </button>
+      <button class="menu-btn" onclick="showLoginFirebaseSetup()" style="border:2px solid #fee2e2;">
+        <span class="icon">🔥</span><span class="label" style="color:#dc2626;">Firebase</span>
       </button>
       `}
     </div>
@@ -958,6 +1109,7 @@ function deleteExam(id) {
   data.exams = data.exams.filter(e => e.id !== id);
   data.submissions = data.submissions.filter(s => s.examId !== id);
   logActivity('Сорил устгав', exam ? `"${exam.title}" устгагдсан` : 'Сорил устгагдсан');
+  deleteExamCloud(id);
   saveData(); render();
 }
 
@@ -1728,6 +1880,7 @@ function deleteUser(id) {
   const u = data.users.find(x => x.id === id);
   data.users = data.users.filter(x => x.id !== id);
   logActivity('Хэрэглэгч устгав', u ? `${u.name} (${u.regNumber})` : '');
+  deleteUserCloud(id);
   saveData(); render();
 }
 
@@ -2368,7 +2521,7 @@ function renderTakingExam() {
 
 function setAnswer(qIdx, val) { currentAnswers[qIdx] = val; }
 
-function submitExam() {
+async function submitExam() {
   if (timerInterval) clearInterval(timerInterval);
   document.getElementById('timer-float').classList.add('hidden');
   const exam = currentExam;
@@ -2388,9 +2541,19 @@ function submitExam() {
     duration: Math.floor((exam.duration*60 - timeRemaining)/60),
     answers, score, percentage, passed: score >= exam.passingScore
   };
-  data.submissions.push(submission);
+
+  // ⚡ CONCURRENT-SAFE: Each student writes to their own unique Firestore document
+  // 1000 students submitting simultaneously = 1000 separate writes = NO conflicts
+  const existing = data.submissions.findIndex(s => s.studentId === submission.studentId && s.examId === submission.examId);
+  if (existing >= 0) data.submissions[existing] = submission;
+  else data.submissions.push(submission);
+
   logActivity('Сорил өгсөн', `"${exam.title}" - ${score}/${exam.totalPoints} (${percentage}%, ${submission.passed?'тэнцсэн':'унасан'})`);
-  saveData();
+
+  // Save submission to its own Firestore doc (async, no blocking UI)
+  saveSubmissionCloud(submission);
+  saveLocal();
+
   window.lastSubmission = submission;
   navigate('results');
 }
