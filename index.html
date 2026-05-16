@@ -1216,8 +1216,6 @@ function renderManageUsers() {
   const amSubjectHead = isTeacher && myTeacher && myTeacher.isSubjectHead;
   const teachers = data.users.filter(u => u.role === 'teacher');
   const subjectHeads = teachers.filter(u => u.isSubjectHead);
-  const students = data.users.filter(u => u.role === 'student');
-  const lastStudents = [...students].slice(-3).reverse();
   // Class teacher: which class is assigned to me
   const myClass = isTeacher ? (data.classes||[]).find(cl => cl.teacherId === user.id) : null;
 
@@ -1266,27 +1264,15 @@ function renderManageUsers() {
                 <div style="font-size:11px;color:#6b7280;">${u.subject||'—'}</div>
               </div>
             </div>
-            ${isAdmin ? `
             <div style="display:flex;gap:4px;">
-              <button onclick="showEditUserModal(${u.id})" style="background:#eff6ff;color:#1d4ed8;border:none;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">✏️</button>
+              ${(isAdmin || (amSubjectHead && myTeacher && myTeacher.subject === u.subject)) ? `
+              <button onclick="showEditUserModal(${u.id})" style="background:#eff6ff;color:#1d4ed8;border:none;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">✏️</button>` : ''}
+              ${isAdmin ? `
               <button onclick="toggleSubjectHead(${u.id})" style="background:#fef9c3;color:#92400e;border:none;border-radius:8px;padding:7px 10px;font-size:11px;cursor:pointer;">⭐ Хасах</button>
-              <button onclick="deleteUser(${u.id})" style="background:#fef2f2;color:#dc2626;border:none;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">🗑️</button>
-            </div>` : ''}
+              <button onclick="deleteUser(${u.id})" style="background:#fef2f2;color:#dc2626;border:none;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">🗑️</button>` : ''}
+            </div>
           </div>`).join('')}
-    </div>
-
-    ${isAdmin && lastStudents.length > 0 ? `
-    <p class="section-title">🕐 Сүүлд нэмэгдсэн сурагчид</p>
-    <div style="margin-bottom:14px;">
-      ${lastStudents.map(u => `
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:white;border-radius:12px;margin-bottom:6px;box-shadow:0 1px 6px rgba(0,0,0,0.05);">
-          <div>
-            <span style="font-weight:800;font-size:13px;">${u.name}</span>
-            <span style="font-size:11px;color:#6b7280;margin-left:6px;">${u.regNumber} • ${u.grade||''}</span>
-          </div>
-          <span style="font-size:11px;background:#dcfce7;color:#166534;padding:3px 8px;border-radius:8px;font-weight:700;">Шинэ</span>
-        </div>`).join('')}
-    </div>` : ''}`;
+    </div>`;
 }
 
 // ===== UC-CLASSES: Ангиуд =====
@@ -1302,18 +1288,17 @@ function renderUCClasses() {
     <button onclick="navigate('manage-users')" style="display:flex;align-items:center;gap:6px;color:#1d4ed8;background:none;border:none;font-weight:800;font-size:15px;cursor:pointer;padding:0;margin-bottom:14px;">← Буцах</button>
     <div style="background:linear-gradient(135deg,#0d9488,#0f766e);border-radius:20px;padding:18px;margin-bottom:14px;color:white;">
       <h2 style="font-size:20px;font-weight:900;margin:0;">🏫 Ангиуд</h2>
-      <p style="opacity:0.8;font-size:12px;margin:4px 0 0;">${data.classes.length} анги бүртгэлтэй</p>
+      <p style="opacity:0.8;font-size:12px;margin:4px 0 0;">${isAdmin ? data.classes.length + ' анги бүртгэлтэй' : (myClass ? 'Удирдаж буй анги' : 'Анги удирдах эрхгүй')}</p>
     </div>
     ${isAdmin ? `<button onclick="showAddClassModal()" class="btn-primary" style="margin-bottom:14px;background:linear-gradient(135deg,#0d9488,#0f766e);">➕ Шинэ анги нэмэх</button>` : ''}
     <div>
-      ${data.classes.length === 0 ? `
+      ${(isAdmin ? data.classes : (myClass ? [myClass] : [])).length === 0 ? `
         <div style="text-align:center;padding:40px;background:white;border-radius:18px;color:#9ca3af;">
-          <div style="font-size:40px;">🏫</div><p style="font-weight:700;">Анги бүртгэлгүй</p>
+          <div style="font-size:40px;">🏫</div><p style="font-weight:700;">${isTeacher ? 'Танд удирдах анги тохируулаагүй байна' : 'Анги бүртгэлгүй'}</p>
         </div>` :
-        data.classes.map(cls => {
+        (isAdmin ? data.classes : [myClass]).map(cls => {
           const teacher = data.users.find(u => u.id === cls.teacherId);
           const studs = data.users.filter(u => u.role === 'student' && u.grade === cls.name);
-          const canManage = isAdmin || (isTeacher && cls.teacherId === user.id);
           return `
             <div class="card" style="padding:14px;margin-bottom:10px;cursor:pointer;" onclick="ucCurrentClassId=${cls.id};navigate('uc-class-detail')">
               <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -1528,13 +1513,13 @@ function renderUCSubjectDetail() {
                   <div style="font-size:11px;color:#6b7280;">${t.regNumber}</div>
                   <div style="font-size:11px;color:#374151;margin-top:4px;">📚 Ордог ангиуд: ${tClasses}</div>
                 </div>
-                ${canEdit ? `
+                ${(isAdmin || amSubjectHead) ? `
                 <div style="display:flex;gap:4px;">
                   <button onclick="showEditUserModal(${t.id})" style="background:#eff6ff;color:#1d4ed8;border:none;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">✏️</button>
                   ${isAdmin ? `<button onclick="toggleSubjectHead(${t.id})" style="background:#fef9c3;color:#92400e;border:none;border-radius:8px;padding:7px 8px;font-size:11px;cursor:pointer;">${isHead?'⭐ Болих':'⭐ Ахлагч'}</button>` : ''}
                 </div>` : ''}
               </div>
-              ${canEdit ? `
+              ${(isAdmin || amSubjectHead) ? `
               <div>
                 <div style="font-size:11px;font-weight:800;color:#475569;margin-bottom:6px;">Хичээл ордог ангиуд тохируулах:</div>
                 <div style="display:flex;flex-wrap:wrap;gap:6px;">
@@ -1607,9 +1592,6 @@ function renderTeacherMyClasses() {
         const has = myTeachingClasses.includes(cl.name);
         return `<button onclick="selfToggleTeacherClass('${cl.name}')" style="padding:10px 16px;border-radius:20px;border:2px solid ${has?'#f97316':'#e5e7eb'};background:${has?'#fff7ed':'white'};color:${has?'#ea580c':'#6b7280'};font-weight:800;font-size:13px;cursor:pointer;">${has?'✓ ':''} ${cl.name}</button>`;
       }).join('')}
-    </div>
-    <div style="background:#fef9c3;border-left:4px solid #eab308;border-radius:0 12px 12px 0;padding:12px;font-size:12px;color:#92400e;">
-      ⚠️ Анги нэмэх хүсэлтийг судлагдахууны ахлагч батлах шаардлагатай.
     </div>`;
 }
 
@@ -1628,7 +1610,6 @@ function selfToggleTeacherClass(className) {
   saveData(); render();
 }
 
-function showAddUserModal
 function showAddUserModal(defaultRole) {
   const isAdmin = data.currentUser.role === 'admin';
   document.getElementById('modal-body').innerHTML = `
@@ -1710,6 +1691,63 @@ function deleteUser(id) {
   data.users = data.users.filter(x => x.id !== id);
   logActivity('Хэрэглэгч устгав', u ? `${u.name} (${u.regNumber})` : '');
   saveData(); render();
+}
+
+function showEditUserModal(userId) {
+  const u = data.users.find(x => x.id === userId);
+  if (!u) return;
+  const isTeacher = u.role === 'teacher';
+  const currentUser = data.currentUser;
+  const amAdmin = currentUser.role === 'admin';
+  document.getElementById('modal-body').innerHTML = `
+    <h3 style="font-size:18px;font-weight:900;margin-bottom:16px;">✏️ ${u.name} — мэдээлэл засах</h3>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div><label style="font-size:12px;font-weight:800;display:block;margin-bottom:5px;">Овог.Нэр *</label>
+        <input id="eu-name" type="text" value="${u.name}" class="input-field"></div>
+      ${isTeacher ? `
+      <div><label style="font-size:12px;font-weight:800;display:block;margin-bottom:5px;">Нэвтрэх код</label>
+        <input id="eu-reg" type="text" value="${u.regNumber}" class="input-field" ${amAdmin?'':'readonly style="background:#f9fafb;"'}></div>
+      <div><label style="font-size:12px;font-weight:800;display:block;margin-bottom:5px;">Судлагдахуун</label>
+        <input id="eu-subject" type="text" value="${u.subject||''}" class="input-field"></div>
+      ` : `
+      <div><label style="font-size:12px;font-weight:800;display:block;margin-bottom:5px;">Нэвтрэх код</label>
+        <input id="eu-reg" type="text" value="${u.regNumber}" class="input-field" ${amAdmin?'':'readonly style="background:#f9fafb;"'}></div>
+      <div><label style="font-size:12px;font-weight:800;display:block;margin-bottom:5px;">Анги</label>
+        <input id="eu-grade" type="text" value="${u.grade||''}" class="input-field"></div>
+      `}
+      <div><label style="font-size:12px;font-weight:800;display:block;margin-bottom:5px;">Нууц үг</label>
+        <input id="eu-pwd" type="text" value="${u.password}" class="input-field"></div>
+      <div style="display:flex;gap:8px;margin-top:4px;">
+        <button onclick="saveEditUser(${userId})" class="btn-primary btn-green" style="flex:1;">✓ Хадгалах</button>
+        <button onclick="closeModal()" class="btn-primary btn-gray" style="flex:1;">Цуцлах</button>
+      </div>
+    </div>`;
+  document.getElementById('modal').classList.remove('hidden');
+}
+
+function saveEditUser(userId) {
+  const u = data.users.find(x => x.id === userId);
+  if (!u) return;
+  const amAdmin = data.currentUser.role === 'admin';
+  const newName = document.getElementById('eu-name').value.trim();
+  if (!newName) { alert('Нэр оруулна уу!'); return; }
+  u.name = newName;
+  u.password = document.getElementById('eu-pwd').value || u.password;
+  if (amAdmin) {
+    const newReg = document.getElementById('eu-reg').value.trim();
+    if (newReg && newReg !== u.regNumber) {
+      if (data.users.find(x => x.regNumber === newReg && x.id !== userId)) { alert('Энэ нэвтрэх код аль хэдийн бүртгэлтэй!'); return; }
+      u.regNumber = newReg;
+    }
+  }
+  if (u.role === 'teacher' && document.getElementById('eu-subject')) {
+    u.subject = document.getElementById('eu-subject').value.trim();
+  }
+  if (u.role === 'student' && document.getElementById('eu-grade')) {
+    u.grade = document.getElementById('eu-grade').value.trim();
+  }
+  logActivity('Хэрэглэгч засав', `${u.name} (${u.regNumber})`);
+  saveData(); closeModal(); render();
 }
 
 // ============ EXCEL IMPORT ============
@@ -2204,62 +2242,6 @@ function clearActivityLog() {
 }
 
 // ============ STUDENT HOME ============
-function renderStudentHome() {
-  const user = data.currentUser;
-  const mySubmissions = data.submissions.filter(s => s.studentId === user.id);
-  const availableExams = data.exams.filter(e => e.status === 'active');
-  return `
-    <div style="background:linear-gradient(135deg,#10b981,#059669);border-radius:20px;padding:20px;margin-bottom:16px;color:white;">
-      <p style="opacity:0.8;font-size:13px;margin:0 0 4px;">${user.grade||''} анги</p>
-      <h2 style="font-size:22px;font-weight:900;margin:0;">Сайн уу, ${user.name.split('.')[1]||user.name}! 👋</h2>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
-      <div class="stat-card" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);">
-        <div style="font-size:28px;font-weight:900;">${availableExams.length}</div>
-        <div style="font-size:11px;opacity:0.85;">📝 Боломжтой сорил</div>
-      </div>
-      <div class="stat-card" style="background:linear-gradient(135deg,#10b981,#059669);cursor:pointer;" onclick="navigate('my-results')">
-        <div style="font-size:28px;font-weight:900;">${mySubmissions.length}</div>
-        <div style="font-size:11px;opacity:0.85;">✅ Өгсөн шалгалт →</div>
-      </div>
-    </div>
-    <p class="section-title">📚 Боломжтой сорилууд</p>
-    <div>
-      ${availableExams.length === 0 ? `
-        <div style="text-align:center;padding:40px;background:white;border-radius:20px;color:#9ca3af;">
-          <div style="font-size:48px;margin-bottom:12px;">📝</div>
-          <p style="font-weight:700;">Боломжтой сорил байхгүй</p>
-        </div>` :
-        availableExams.map(exam => {
-          const done = mySubmissions.find(s => s.examId === exam.id);
-          return `
-          <div class="card" style="padding:16px;margin-bottom:10px;">
-            <h4 style="font-weight:900;font-size:15px;margin:0 0 6px;">${exam.title}</h4>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
-              <span class="badge" style="background:#dbeafe;color:#1d4ed8;">${exam.subject}</span>
-              <span class="badge" style="background:#ede9fe;color:#6d28d9;">${exam.questions.length} асуулт</span>
-              <span class="badge" style="background:#dcfce7;color:#166534;">${exam.duration} мин</span>
-            </div>
-            ${done ? `
-              <div style="display:flex;align-items:center;justify-content:space-between;background:${done.passed?'#f0fdf4':'#fef2f2'};border-radius:12px;padding:12px;">
-                <span style="font-weight:700;color:${done.passed?'#166534':'#991b1b'};">${done.passed?'✅ Тэнцсэн':'❌ Унасан'}</span>
-                <span style="font-weight:900;font-size:20px;color:${done.passed?'#166534':'#991b1b'};">${done.percentage}%</span>
-              </div>` : `
-              <button onclick="startExam(${exam.id})" class="btn-primary btn-green">🚀 Шалгалт эхлүүлэх</button>`}
-          </div>`;
-        }).join('')}
-    </div>
-    ${data.announcements.length > 0 ? `
-    <p class="section-title" style="margin-top:16px;">📢 Санамж</p>
-    <div>
-      ${data.announcements.slice(0,3).map(a => `
-        <div class="ann-card">
-          <div style="font-weight:900;font-size:14px;margin-bottom:4px;">${a.title}</div>
-          <div style="font-size:13px;color:#374151;white-space:pre-wrap;">${a.content}</div>
-          <div style="font-size:11px;color:#9ca3af;margin-top:6px;">📅 ${a.date}</div>
-        </div>`).join('')}
-    </div>` : ''}`;
-}
 
 // ============ TAKING EXAM ============
 function startExam(examId) {
