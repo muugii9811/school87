@@ -283,13 +283,13 @@
     <!-- Teacher form -->
     <div id="form-teacher" class="space-y-3">
       <div>
-        <label style="font-size:13px;font-weight:800;color:#374151;display:block;margin-bottom:6px;">Нэвтрэх код</label>
-        <input type="text" id="teacher-username" placeholder="Жишээ: 10А0001"
+        <label style="font-size:13px;font-weight:800;color:#374151;display:block;margin-bottom:6px;">Нэвтрэх нэр</label>
+        <input type="text" id="teacher-username" placeholder=""
           class="input-field" style="text-align:center;font-family:monospace;letter-spacing:0.1em;font-size:20px!important;font-weight:700;">
       </div>
       <div>
         <label style="font-size:13px;font-weight:800;color:#374151;display:block;margin-bottom:6px;">Нууц үг</label>
-        <input type="password" id="teacher-password" placeholder="••••••"
+        <input type="password" id="teacher-password" placeholder=""
           class="input-field" onkeydown="if(event.key==='Enter') handleLogin()">
       </div>
       <div id="login-error" class="hidden" style="padding:12px;background:#fef2f2;border:2px solid #fecaca;border-radius:12px;color:#dc2626;font-size:13px;font-weight:700;"></div>
@@ -300,14 +300,13 @@
     <!-- Student form -->
     <div id="form-student" class="space-y-3 hidden">
       <div>
-        <label style="font-size:13px;font-weight:800;color:#374151;display:block;margin-bottom:6px;">Нэвтрэх код (РД дугаар)</label>
-        <input type="text" id="student-username" placeholder="Жишээ: 10А0001"
+        <label style="font-size:13px;font-weight:800;color:#374151;display:block;margin-bottom:6px;">Нэвтрэх нэр (Анги 4 оронтой тоо бичих)</label>
+        <input type="text" id="student-username" placeholder=""
           class="input-field" style="text-align:center;font-family:monospace;letter-spacing:0.1em;font-size:20px!important;font-weight:700;">
-        <p style="font-size:11px;color:#9ca3af;margin-top:4px;">Анги + Бүлэг + РД дугаар (жш: 10А0001)</p>
       </div>
       <div>
         <label style="font-size:13px;font-weight:800;color:#374151;display:block;margin-bottom:6px;">Нууц үг</label>
-        <input type="password" id="student-password" placeholder="••••••"
+        <input type="password" id="student-password" placeholder=""
           class="input-field" onkeydown="if(event.key==='Enter') handleLogin()">
       </div>
       <div id="login-error-student" class="hidden" style="padding:12px;background:#fef2f2;border:2px solid #fecaca;border-radius:12px;color:#dc2626;font-size:13px;font-weight:700;"></div>
@@ -354,9 +353,9 @@
         <span class="icon">➕</span>
         <span>Сорил</span>
       </button>
-      <button class="nav-tab" id="nav-subjects" onclick="navigate('subjects')">
-        <span class="icon">📚</span>
-        <span>Судлагдахуун</span>
+      <button class="nav-tab" id="nav-classes" onclick="navigate('uc-classes')">
+        <span class="icon">🏫</span>
+        <span>Ангиуд</span>
       </button>
       <button class="nav-tab" id="nav-users" onclick="navigate('manage-users')">
         <span class="icon">👥</span>
@@ -449,6 +448,7 @@ const DEFAULT_DATA = {
   submissions: [],
   activityLog: [],
   posters: [],
+  ads: [],
   sentAnalyses: [],
   subjects: [
     { id: 1, name: 'Математик', color: '#3b82f6', icon: '📐' },
@@ -558,6 +558,8 @@ async function initData() {
   if (localData && localData.users) {
     data = localData;
     if (!data.activityLog) data.activityLog = [];
+    if (!data.posters) data.posters = [];
+    if (!data.ads) data.ads = [];
   }
   const binId = getBinId();
   if (binId) {
@@ -565,6 +567,8 @@ async function initData() {
     if (cloudData && cloudData.users) {
       data = cloudData;
       if (!data.activityLog) data.activityLog = [];
+      if (!data.posters) data.posters = [];
+      if (!data.ads) data.ads = [];
       saveLocal();
     }
   } else {
@@ -811,9 +815,9 @@ function render() {
 function updateNavActive() {
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   const map = { dashboard: 'nav-home', 'create-exam': 'nav-exams', 'bulk-import': 'nav-exams',
-    'manage-users': 'nav-users', 'excel-import': 'nav-users', 'manage-classes': 'nav-users', 'uc-classes': 'nav-users', 'uc-class-detail': 'nav-users', 'uc-subjects': 'nav-users', 'uc-subject-detail': 'nav-users', 'teacher-my-classes': 'nav-users',
-    analytics: 'nav-stats', 'activity-log': 'nav-stats', 'posters': 'nav-stats',
-    subjects: 'nav-subjects', 'subject-detail': 'nav-subjects',
+    'manage-users': 'nav-users', 'excel-import': 'nav-users', 'uc-subjects': 'nav-users', 'uc-subject-detail': 'nav-users', 'teacher-my-classes': 'nav-users',
+    'uc-classes': 'nav-classes', 'uc-class-detail': 'nav-classes', 'manage-classes': 'nav-classes',
+    analytics: 'nav-stats', 'activity-log': 'nav-stats', 'posters': 'nav-stats', 'subjects': 'nav-stats', 'subject-detail': 'nav-stats',
     'my-results': 'snav-results', 'available-exams': 'snav-exams', 'student-news': 'snav-news' };
   const id = map[currentView] || (data.currentUser && data.currentUser.role === 'student' ? 'snav-home' : 'nav-home');
   const el = document.getElementById(id);
@@ -829,10 +833,12 @@ function navigate(view, examId) {
 function renderAdminDashboard() {
   const user = data.currentUser;
   const isAdmin = user.role === 'admin';
-  const totalExams = data.exams.length;
   const totalStudents = data.users.filter(u => u.role === 'student').length;
-  const totalSubmissions = data.submissions.length;
-  const avgScore = totalSubmissions > 0 ? Math.round(data.submissions.reduce((s,x) => s + x.percentage, 0) / totalSubmissions) : 0;
+  const totalTeachers = data.users.filter(u => u.role === 'teacher').length;
+  // Teacher sees own exams/subs; admin sees all
+  const myExams = isAdmin ? data.exams : data.exams.filter(e => e.createdByName === user.name);
+  const mySubs = isAdmin ? data.submissions : data.submissions.filter(s => myExams.find(e=>e.id===s.examId));
+  const avgScore = mySubs.length > 0 ? Math.round(mySubs.reduce((s,x) => s + x.percentage, 0) / mySubs.length) : 0;
   const roleLabel = isAdmin ? 'Админ' : 'Багш';
 
   return `
@@ -843,15 +849,15 @@ function renderAdminDashboard() {
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
       <div class="stat-card" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);">
-        <div style="font-size:28px;font-weight:900;">${totalExams}</div>
-        <div style="font-size:11px;opacity:0.85;">📝 Нийт сорил</div>
+        <div style="font-size:28px;font-weight:900;">${myExams.length}</div>
+        <div style="font-size:11px;opacity:0.85;">📝 ${isAdmin?'Нийт':'Миний'} сорил</div>
       </div>
       <div class="stat-card" style="background:linear-gradient(135deg,#8b5cf6,#6d28d9);">
-        <div style="font-size:28px;font-weight:900;">${totalStudents}</div>
-        <div style="font-size:11px;opacity:0.85;">👨‍🎓 Суралцагч</div>
+        <div style="font-size:28px;font-weight:900;">${isAdmin?totalStudents:totalTeachers}</div>
+        <div style="font-size:11px;opacity:0.85;">${isAdmin?'👨‍🎓 Суралцагч':'👩‍🏫 Багш нар'}</div>
       </div>
       <div class="stat-card" style="background:linear-gradient(135deg,#10b981,#059669);">
-        <div style="font-size:28px;font-weight:900;">${totalSubmissions}</div>
+        <div style="font-size:28px;font-weight:900;">${mySubs.length}</div>
         <div style="font-size:11px;opacity:0.85;">✅ Өгсөн шалгалт</div>
       </div>
       <div class="stat-card" style="background:linear-gradient(135deg,#f59e0b,#d97706);">
@@ -871,13 +877,10 @@ function renderAdminDashboard() {
       <button class="menu-btn" onclick="navigate('manage-users')">
         <span class="icon">👥</span><span class="label">Хэрэглэгчид</span>
       </button>
-      <button class="menu-btn" onclick="navigate('excel-import')">
-        <span class="icon">📊</span><span class="label">Excel оруулах</span>
-      </button>
-      ${isAdmin ? `
-      <button class="menu-btn" onclick="navigate('manage-classes')">
+      <button class="menu-btn" onclick="navigate('uc-classes')">
         <span class="icon">🏫</span><span class="label">Ангиуд</span>
       </button>
+      ${isAdmin ? `
       <button class="menu-btn" onclick="navigate('manage-announcements')">
         <span class="icon">📢</span><span class="label">Санамж</span>
       </button>
@@ -887,12 +890,18 @@ function renderAdminDashboard() {
       <button class="menu-btn" onclick="navigate('activity-log')">
         <span class="icon">📋</span><span class="label">Үйл ажиллагаа</span>
       </button>
+      <button class="menu-btn" onclick="navigate('excel-import')">
+        <span class="icon">📊</span><span class="label">Excel оруулах</span>
+      </button>
       <button class="menu-btn" onclick="navigate('analytics')">
         <span class="icon">📈</span><span class="label">Статистик</span>
       </button>
       ` : `
       <button class="menu-btn" onclick="navigate('analytics')">
         <span class="icon">📈</span><span class="label">Статистик</span>
+      </button>
+      <button class="menu-btn" onclick="navigate('posters')">
+        <span class="icon">📢</span><span class="label">Зар & Мэдэгдэл</span>
       </button>
       `}
     </div>
@@ -909,14 +918,14 @@ function renderAdminDashboard() {
       `).join('')}
     </div>` : ''}
 
-    <p class="section-title">📚 Сорилын жагсаалт</p>
+    <p class="section-title">📚 ${isAdmin?'Нийт':'Миний'} сорилын жагсаалт</p>
     <div>
-      ${data.exams.length === 0 ? `
+      ${myExams.length === 0 ? `
         <div style="text-align:center;padding:40px 0;color:#9ca3af;">
           <div style="font-size:48px;margin-bottom:12px;">📝</div>
           <p style="font-weight:700;">Сорил байхгүй байна</p>
         </div>` :
-        data.exams.map(exam => {
+        myExams.map(exam => {
           const subCount = data.submissions.filter(s => s.examId === exam.id).length;
           return `
           <div class="card" style="padding:16px;margin-bottom:10px;">
@@ -1225,6 +1234,25 @@ function renderManageUsers() {
       <p style="opacity:0.8;font-size:12px;margin:4px 0 0;">${isAdmin?'Системийн тохиргоо':isTeacher?(amSubjectHead?'Судлагдахууны ахлагч':'Багш'):'Хэрэглэгч'}</p>
     </div>
 
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+      <div class="stat-card" style="background:linear-gradient(135deg,#10b981,#059669);">
+        <div style="font-size:26px;font-weight:900;">${data.users.filter(u=>u.role==='student').length}</div>
+        <div style="font-size:11px;opacity:0.85;">👨‍🎓 Сурагч</div>
+      </div>
+      <div class="stat-card" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);">
+        <div style="font-size:26px;font-weight:900;">${data.users.filter(u=>u.role==='teacher').length}</div>
+        <div style="font-size:11px;opacity:0.85;">👩‍🏫 Багш</div>
+      </div>
+      <div class="stat-card" style="background:linear-gradient(135deg,#8b5cf6,#6d28d9);">
+        <div style="font-size:26px;font-weight:900;">${data.exams.length}</div>
+        <div style="font-size:11px;opacity:0.85;">📝 Нийт сорил</div>
+      </div>
+      <div class="stat-card" style="background:linear-gradient(135deg,#f59e0b,#d97706);">
+        <div style="font-size:26px;font-weight:900;">${data.submissions.length}</div>
+        <div style="font-size:11px;opacity:0.85;">✅ Өгсөн сорил</div>
+      </div>
+    </div>
+
     ${isAdmin ? `
     <div style="display:flex;gap:8px;margin-bottom:14px;">
       <button onclick="showAddUserModal('student')" class="btn-primary btn-green" style="flex:1;padding:12px;font-size:13px;">➕ Сурагч</button>
@@ -1236,20 +1264,19 @@ function renderManageUsers() {
       <button class="menu-btn" onclick="navigate('uc-classes')">
         <span class="icon">🏫</span><span class="label">Ангиуд</span>
       </button>
+      ${isAdmin ? `
       <button class="menu-btn" onclick="navigate('uc-subjects')">
         <span class="icon">📚</span><span class="label">Судлагдахуун</span>
       </button>
-      ${isAdmin ? `
       <button class="menu-btn" onclick="navigate('manage-classes')">
         <span class="icon">✏️</span><span class="label">Анги тохируулах</span>
       </button>
       <button class="menu-btn" onclick="navigate('excel-import')">
         <span class="icon">📊</span><span class="label">Excel оруулах</span>
-      </button>` : ''}
-      ${isTeacher ? `
+      </button>` : `
       <button class="menu-btn" onclick="navigate('teacher-my-classes')">
         <span class="icon">🎓</span><span class="label">Миний ангиуд</span>
-      </button>` : ''}
+      </button>`}
     </div>
 
     <p class="section-title">⭐ Судлагдахууны ахлагч нар (${subjectHeads.length})</p>
@@ -1282,30 +1309,41 @@ function renderUCClasses() {
   const user = data.currentUser;
   const isAdmin = user.role === 'admin';
   const isTeacher = user.role === 'teacher';
+  const myTeacher = isTeacher ? data.users.find(u => u.id === user.id) : null;
+  const myTeachingClasses = myTeacher ? (myTeacher.teachingClasses||[]) : [];
   const myClass = isTeacher ? data.classes.find(cl => cl.teacherId === user.id) : null;
+  // Teacher sees: class they manage + classes they teach
+  const visibleClasses = isAdmin ? data.classes :
+    data.classes.filter(cl => cl.teacherId === user.id || myTeachingClasses.includes(cl.name));
 
   return `
-    <button onclick="navigate('manage-users')" style="display:flex;align-items:center;gap:6px;color:#1d4ed8;background:none;border:none;font-weight:800;font-size:15px;cursor:pointer;padding:0;margin-bottom:14px;">← Буцах</button>
     <div style="background:linear-gradient(135deg,#0d9488,#0f766e);border-radius:20px;padding:18px;margin-bottom:14px;color:white;">
       <h2 style="font-size:20px;font-weight:900;margin:0;">🏫 Ангиуд</h2>
-      <p style="opacity:0.8;font-size:12px;margin:4px 0 0;">${isAdmin ? data.classes.length + ' анги бүртгэлтэй' : (myClass ? 'Удирдаж буй анги' : 'Анги удирдах эрхгүй')}</p>
+      <p style="opacity:0.8;font-size:12px;margin:4px 0 0;">${isAdmin ? data.classes.length + ' анги бүртгэлтэй' : (visibleClasses.length > 0 ? visibleClasses.length + ' анги' : 'Анги тохируулаагүй')}</p>
     </div>
     ${isAdmin ? `<button onclick="showAddClassModal()" class="btn-primary" style="margin-bottom:14px;background:linear-gradient(135deg,#0d9488,#0f766e);">➕ Шинэ анги нэмэх</button>` : ''}
     <div>
-      ${(isAdmin ? data.classes : (myClass ? [myClass] : [])).length === 0 ? `
+      ${visibleClasses.length === 0 ? `
         <div style="text-align:center;padding:40px;background:white;border-radius:18px;color:#9ca3af;">
           <div style="font-size:40px;">🏫</div><p style="font-weight:700;">${isTeacher ? 'Танд удирдах анги тохируулаагүй байна' : 'Анги бүртгэлгүй'}</p>
         </div>` :
-        (isAdmin ? data.classes : [myClass]).map(cls => {
+        visibleClasses.map(cls => {
           const teacher = data.users.find(u => u.id === cls.teacherId);
           const studs = data.users.filter(u => u.role === 'student' && u.grade === cls.name);
+          const isMyClass = cls.teacherId === user.id;
+          const isTeachingHere = myTeachingClasses.includes(cls.name);
           return `
             <div class="card" style="padding:14px;margin-bottom:10px;cursor:pointer;" onclick="ucCurrentClassId=${cls.id};navigate('uc-class-detail')">
               <div style="display:flex;justify-content:space-between;align-items:center;">
-                <div>
-                  <div style="font-size:20px;font-weight:900;color:#0f766e;">${cls.name}</div>
-                  <div style="font-size:12px;color:#6b7280;margin-top:2px;">
-                    👩‍🏫 ${teacher?teacher.name:'Тохируулаагүй'} • 👨‍🎓 ${studs.length} сурагч
+                <div style="flex:1;">
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <div style="font-size:20px;font-weight:900;color:#0f766e;">${cls.name}</div>
+                    ${isMyClass ? '<span style="background:#fef9c3;color:#92400e;font-size:11px;font-weight:800;padding:3px 8px;border-radius:8px;">Анги удирдагч</span>' : ''}
+                    ${isTeachingHere && !isMyClass ? '<span style="background:#eff6ff;color:#1d4ed8;font-size:11px;font-weight:800;padding:3px 8px;border-radius:8px;">Хичээлтэй</span>' : ''}
+                  </div>
+                  <div style="font-size:12px;color:#6b7280;margin-top:4px;">
+                    👩‍🏫 ${teacher?teacher.name:'Тохируулаагүй'} • 
+                    <span style="background:#f0fdf4;color:#166534;font-weight:800;padding:2px 8px;border-radius:8px;">👨‍🎓 ${studs.length}</span>
                   </div>
                 </div>
                 <span style="color:#9ca3af;font-size:20px;">›</span>
@@ -1327,7 +1365,7 @@ function renderUCClassDetail() {
   const studs = data.users.filter(u => u.role === 'student' && u.grade === cls.name);
 
   return `
-    <button onclick="navigate('uc-classes')" style="display:flex;align-items:center;gap:6px;color:#0f766e;background:none;border:none;font-weight:800;font-size:15px;cursor:pointer;padding:0;margin-bottom:14px;">← Буцах</button>
+    <button onclick="navigate('uc-classes')" style="display:flex;align-items:center;gap:6px;color:#0f766e;background:none;border:none;font-weight:800;font-size:15px;cursor:pointer;padding:0;margin-bottom:14px;">← Ангиуд руу буцах</button>
     <div style="background:linear-gradient(135deg,#0d9488,#0f766e);border-radius:20px;padding:18px;margin-bottom:14px;color:white;">
       <div style="font-size:28px;font-weight:900;">${cls.name}</div>
       <div style="opacity:0.85;font-size:13px;">👩‍🏫 ${teacher?teacher.name:'Тохируулаагүй'} • 👨‍🎓 ${studs.length} сурагч</div>
@@ -2118,14 +2156,18 @@ function renderExamDetail() {
 
 // ============ ANALYTICS ============
 function renderAnalytics() {
+  const user = data.currentUser;
+  const isAdmin = user.role === 'admin';
   const students = data.users.filter(u=>u.role==='student').length;
   const teachers = data.users.filter(u=>u.role==='teacher').length;
-  const totalSubs = data.submissions.length;
-  const passedCount = data.submissions.filter(s=>s.passed).length;
-  const avg = totalSubs > 0 ? Math.round(data.submissions.reduce((s,x)=>s+x.percentage,0)/totalSubs) : 0;
+  const myExams = isAdmin ? data.exams : data.exams.filter(e=>e.createdByName===user.name);
+  const mySubs = isAdmin ? data.submissions : data.submissions.filter(s=>myExams.find(e=>e.id===s.examId));
+  const totalSubs = mySubs.length;
+  const passedCount = mySubs.filter(s=>s.passed).length;
+  const avg = totalSubs > 0 ? Math.round(mySubs.reduce((s,x)=>s+x.percentage,0)/totalSubs) : 0;
   return `
     <div style="background:linear-gradient(135deg,#1d4ed8,#4f46e5);border-radius:20px;padding:20px;margin-bottom:16px;color:white;">
-      <p style="opacity:0.8;font-size:13px;margin:0 0 4px;">Системийн ерөнхий статистик</p>
+      <p style="opacity:0.8;font-size:13px;margin:0 0 4px;">${isAdmin?'Системийн ерөнхий':'Миний'} статистик</p>
       <h2 style="font-size:22px;font-weight:900;margin:0;">📊 Дүн шинжилгээ</h2>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
@@ -2138,17 +2180,25 @@ function renderAnalytics() {
         <div style="font-size:11px;opacity:0.85;">👩‍🏫 Багш</div>
       </div>
       <div class="stat-card" style="background:linear-gradient(135deg,#8b5cf6,#6d28d9);">
+        <div style="font-size:28px;font-weight:900;">${myExams.length}</div>
+        <div style="font-size:11px;opacity:0.85;">📝 ${isAdmin?'Нийт':'Миний'} сорил</div>
+      </div>
+      <div class="stat-card" style="background:linear-gradient(135deg,#f59e0b,#d97706);">
         <div style="font-size:28px;font-weight:900;">${totalSubs}</div>
         <div style="font-size:11px;opacity:0.85;">✅ Өгсөн шалгалт</div>
       </div>
-      <div class="stat-card" style="background:linear-gradient(135deg,#f59e0b,#d97706);">
+      <div class="stat-card" style="background:linear-gradient(135deg,#ec4899,#db2777);">
+        <div style="font-size:28px;font-weight:900;">${passedCount}</div>
+        <div style="font-size:11px;opacity:0.85;">🏆 Тэнцсэн</div>
+      </div>
+      <div class="stat-card" style="background:linear-gradient(135deg,#14b8a6,#0d9488);">
         <div style="font-size:28px;font-weight:900;">${avg}%</div>
         <div style="font-size:11px;opacity:0.85;">📊 Дундаж оноо</div>
       </div>
     </div>
-    <p class="section-title">Сорил бүрийн гүйцэтгэл</p>
+    <p class="section-title">${isAdmin?'Нийт':'Миний'} сорил бүрийн гүйцэтгэл</p>
     <div>
-      ${data.exams.map(exam => {
+      ${myExams.map(exam => {
         const subs = data.submissions.filter(s => s.examId === exam.id);
         const avgEx = subs.length > 0 ? Math.round(subs.reduce((s,x)=>s+x.percentage,0)/subs.length) : 0;
         return `
@@ -2157,7 +2207,7 @@ function renderAnalytics() {
               <div style="font-weight:800;font-size:14px;flex:1;padding-right:10px;">${exam.title}</div>
               <div style="font-weight:900;font-size:18px;color:${avgEx>=70?'#166534':avgEx>=40?'#92400e':'#991b1b'};">${avgEx}%</div>
             </div>
-            <div style="font-size:12px;color:#6b7280;margin-bottom:6px;">${subs.length} оролцогч</div>
+            <div style="font-size:12px;color:#6b7280;margin-bottom:6px;">🔑 ${exam.examCode} • ${subs.length} оролцогч${!isAdmin?` • 👤 ${exam.createdByName}`:''}</div>
             <div class="result-bar-bg">
               <div class="result-bar-fill" style="width:${avgEx}%;background:${avgEx>=70?'#10b981':avgEx>=40?'#f59e0b':'#ef4444'};"></div>
             </div>
@@ -2558,11 +2608,30 @@ function renderPosters() {
         <div><label style="font-size:12px;font-weight:800;display:block;margin-bottom:5px;">Тайлбар</label>
           <textarea id="poster-desc" class="input-field" rows="2" placeholder="Дэлгэрэнгүй мэдээлэл..."></textarea></div>
         <div><label style="font-size:12px;font-weight:800;display:block;margin-bottom:5px;">Хүргэх хэрэглэгч</label>
-          <select id="poster-target" class="input-field">
-            <option value="all">Бүгд</option>
+          <select id="poster-target" class="input-field" onchange="togglePosterTargetOptions()">
+            <option value="all">Бүгд (нийт)</option>
             <option value="student">Зөвхөн сурагчид</option>
             <option value="teacher">Зөвхөн багш нар</option>
-          </select></div>
+            <option value="class">Тодорхой анги</option>
+            <option value="selected">Сонгосон сурагчид</option>
+          </select>
+        </div>
+        <div id="poster-class-select" class="hidden">
+          <label style="font-size:12px;font-weight:800;display:block;margin-bottom:5px;">Анги сонгох</label>
+          <select id="poster-class" class="input-field">
+            ${(data.classes||[]).map(cl=>`<option value="${cl.name}">${cl.name}</option>`).join('')}
+          </select>
+        </div>
+        <div id="poster-students-select" class="hidden">
+          <label style="font-size:12px;font-weight:800;display:block;margin-bottom:5px;">Сурагчид сонгох</label>
+          <div style="max-height:200px;overflow-y:auto;border:2px solid #e5e7eb;border-radius:12px;padding:10px;">
+            ${data.users.filter(u=>u.role==='student').map(u=>`
+              <label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;">
+                <input type="checkbox" data-sid="${u.id}" style="width:18px;height:18px;">
+                <span style="font-size:13px;">${u.name} <span style="color:#9ca3af;">${u.grade||''}</span></span>
+              </label>`).join('')}
+          </div>
+        </div>
         <button onclick="sendPoster()" class="btn-primary btn-pink">📤 Илгээх</button>
       </div>
     </div>` : ''}
@@ -2577,7 +2646,7 @@ function renderPosters() {
               <div style="font-weight:900;font-size:15px;margin-bottom:4px;">${p.title}</div>
               ${p.description ? `<div style="font-size:13px;color:#374151;margin-bottom:8px;">${p.description}</div>` : ''}
               <div style="display:flex;justify-content:space-between;align-items:center;">
-                <div style="font-size:11px;color:#9ca3af;">📅 ${p.date} • 👤 ${p.createdBy}</div>
+                <div style="font-size:11px;color:#9ca3af;">📅 ${p.date} • 👤 ${p.createdBy} • 🎯 ${p.target==='all'?'Бүгд':p.target==='student'?'Сурагчид':p.target==='teacher'?'Багш нар':p.target==='class'?'Анги: '+(p.targetClass||''):'Сонгосон сурагчид'}</div>
                 ${(isAdmin || data.currentUser.name === p.createdBy) ? `<button onclick="deletePoster(${p.id})" style="background:#fef2f2;color:#dc2626;border:none;border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;">🗑️</button>` : ''}
               </div>
             </div>
@@ -2597,21 +2666,34 @@ function handlePosterUpload(event) {
   reader.readAsDataURL(file);
 }
 
+function togglePosterTargetOptions() {
+  const val = document.getElementById('poster-target').value;
+  document.getElementById('poster-class-select').classList.toggle('hidden', val !== 'class');
+  document.getElementById('poster-students-select').classList.toggle('hidden', val !== 'selected');
+}
+
 function sendPoster() {
   const title = document.getElementById('poster-title').value.trim();
   if (!title) { alert('Гарчиг оруулна уу!'); return; }
   const imageUrl = document.getElementById('poster-img').value.trim();
   const description = document.getElementById('poster-desc').value.trim();
   const target = document.getElementById('poster-target').value;
+  let targetClass = null, targetStudentIds = null;
+  if (target === 'class') { targetClass = document.getElementById('poster-class').value; }
+  if (target === 'selected') {
+    targetStudentIds = [...document.querySelectorAll('input[data-sid]:checked')].map(el => parseInt(el.dataset.sid));
+    if (targetStudentIds.length === 0) { alert('Дор хаяж 1 сурагч сонгоно уу!'); return; }
+  }
   if (!data.posters) data.posters = [];
   data.posters.push({
     id: Date.now(), title, description, imageUrl,
     imageData: posterImageData,
-    target, date: new Date().toISOString().split('T')[0],
+    target, targetClass, targetStudentIds,
+    date: new Date().toISOString().split('T')[0],
     createdBy: data.currentUser.name, createdById: data.currentUser.id
   });
   posterImageData = '';
-  logActivity('Постер илгээв', `"${title}"`);
+  logActivity('Постер илгээв', `"${title}" → ${target==='all'?'Бүгд':target==='student'?'Сурагчид':target==='teacher'?'Багш нар':target==='class'?targetClass:'Сонгосон сурагчид'}`);
   saveData(); render();
   alert('✅ Постер амжилттай илгээгдлээ!');
 }
@@ -2625,7 +2707,13 @@ function deletePoster(id) {
 // ============ STUDENT NEWS ============
 function renderStudentNews() {
   if (!data.posters) data.posters = [];
-  const myPosters = data.posters.filter(p => p.target === 'all' || p.target === 'student');
+  const user = data.currentUser;
+  const myPosters = data.posters.filter(p => {
+    if (p.target === 'all' || p.target === 'student') return true;
+    if (p.target === 'selected' && p.targetStudentIds && p.targetStudentIds.includes(user.id)) return true;
+    if (p.target === 'class' && p.targetClass === user.grade) return true;
+    return false;
+  });
   return `
     <div style="background:linear-gradient(135deg,#ec4899,#db2777);border-radius:20px;padding:20px;margin-bottom:16px;color:white;">
       <p style="opacity:0.8;font-size:13px;margin:0 0 4px;">Мэдэгдэл & Зар</p>
@@ -2668,6 +2756,14 @@ function renderAvailableExams() {
       <p style="opacity:0.8;font-size:13px;margin:0 0 4px;">Шалгалт</p>
       <h2 style="font-size:22px;font-weight:900;margin:0;">📝 Өгөх сорилууд</h2>
     </div>
+    <div class="card" style="padding:18px;margin-bottom:16px;">
+      <p style="font-weight:900;font-size:15px;margin:0 0 6px;">🔑 Сорилын кодоор эхлэх</p>
+      <p style="font-size:12px;color:#6b7280;margin:0 0 12px;">Багшаас авсан кодыг оруулна уу</p>
+      <div style="display:flex;gap:8px;">
+        <input id="exam-code-input" type="text" inputmode="numeric" maxlength="6" class="input-field" placeholder="0000" style="flex:1;text-align:center;letter-spacing:0.25em;font-size:22px!important;font-weight:900;">
+        <button onclick="startExamByCode()" style="padding:14px 18px;background:linear-gradient(135deg,#10b981,#059669);color:white;border:none;border-radius:12px;font-weight:900;font-size:15px;cursor:pointer;">→ Эхлэх</button>
+      </div>
+    </div>
     <p class="section-title">⏳ Өгөх сорил (${pending.length})</p>
     ${pending.length === 0 ? `<div style="text-align:center;padding:30px;background:white;border-radius:16px;color:#9ca3af;margin-bottom:14px;"><p style="font-weight:700;">Өгөх сорил байхгүй</p></div>` :
       pending.map(exam => `
@@ -2678,7 +2774,7 @@ function renderAvailableExams() {
             <span class="badge" style="background:#ede9fe;color:#6d28d9;">${exam.questions.length} асуулт</span>
             <span class="badge" style="background:#dcfce7;color:#166534;">${exam.duration} мин</span>
           </div>
-          <button onclick="startExam(${exam.id})" class="btn-primary btn-green">🚀 Эхлүүлэх</button>
+          <button onclick="promptExamCode(${exam.id})" class="btn-primary btn-green">🚀 Эхлүүлэх</button>
         </div>`).join('')}
     <p class="section-title">✅ Өгсөн сорил (${done.length})</p>
     ${done.map(exam => {
@@ -2692,6 +2788,40 @@ function renderAvailableExams() {
           </div>
         </div>`;
     }).join('')}`;
+}
+
+function startExamByCode() {
+  const code = (document.getElementById('exam-code-input').value||'').trim();
+  if (!code) { alert('Сорилын кодыг оруулна уу!'); return; }
+  const exam = data.exams.find(e => e.examCode === code && e.status === 'active');
+  if (!exam) { alert('Сорил олдсонгүй! Кодыг шалгана уу.'); return; }
+  const user = data.currentUser;
+  const alreadyDone = data.submissions.find(s => s.examId === exam.id && s.studentId === user.id);
+  if (alreadyDone) { alert('Та энэ сорилыг аль хэдийн өгсөн байна!'); return; }
+  startExam(exam.id);
+}
+
+function promptExamCode(examId) {
+  const exam = data.exams.find(e => e.id === examId);
+  if (!exam) return;
+  document.getElementById('modal-body').innerHTML = `
+    <h3 style="font-size:18px;font-weight:900;margin-bottom:8px;">🔑 Сорилын код оруулна уу</h3>
+    <p style="font-size:13px;color:#6b7280;margin-bottom:14px;">${exam.title}</p>
+    <input id="mc-code" type="text" inputmode="numeric" maxlength="6" class="input-field" placeholder="Сорилын код" style="text-align:center;letter-spacing:0.25em;font-size:22px!important;font-weight:900;margin-bottom:14px;" autofocus>
+    <div style="display:flex;gap:8px;">
+      <button onclick="verifyAndStart(${examId})" class="btn-primary btn-green" style="flex:1;">✓ Эхлэх</button>
+      <button onclick="closeModal()" class="btn-primary btn-gray" style="flex:1;">Цуцлах</button>
+    </div>`;
+  document.getElementById('modal').classList.remove('hidden');
+}
+
+function verifyAndStart(examId) {
+  const code = (document.getElementById('mc-code').value||'').trim();
+  const exam = data.exams.find(e => e.id === examId);
+  if (!exam) return;
+  if (code !== exam.examCode) { alert('Код буруу байна!'); return; }
+  closeModal();
+  startExam(examId);
 }
 
 // ============ EXAM ANALYSIS ============
@@ -2846,7 +2976,19 @@ function renderStudentHome() {
   const mySubmissions = data.submissions.filter(s => s.studentId === user.id);
   const availableExams = data.exams.filter(e => e.status === 'active');
   const pendingCount = availableExams.filter(e => !mySubmissions.find(s => s.examId === e.id)).length;
-  const myPosters = (data.posters||[]).filter(p => p.target === 'all' || p.target === 'student');
+  // Filter posters/ads visible to this student
+  const myPosters = (data.posters||[]).filter(p => {
+    if (p.target === 'all' || p.target === 'student') return true;
+    if (p.target === 'selected' && p.targetStudentIds && p.targetStudentIds.includes(user.id)) return true;
+    if (p.target === 'class' && p.targetClass && p.targetClass === user.grade) return true;
+    return false;
+  });
+  const myAds = (data.ads||[]).filter(a => {
+    if (a.target === 'all' || a.target === 'student') return true;
+    if (a.target === 'selected' && a.targetStudentIds && a.targetStudentIds.includes(user.id)) return true;
+    if (a.target === 'class' && a.targetClass && a.targetClass === user.grade) return true;
+    return false;
+  });
   return `
     <div style="background:linear-gradient(135deg,#10b981,#059669);border-radius:20px;padding:20px;margin-bottom:16px;color:white;">
       <p style="opacity:0.8;font-size:13px;margin:0 0 4px;">${user.grade||''} анги</p>
@@ -2863,16 +3005,26 @@ function renderStudentHome() {
       </div>
     </div>
     ${myPosters.length > 0 ? `
-    <p class="section-title">📢 Мэдэгдэл</p>
-    <div style="margin-bottom:16px;" onclick="navigate('student-news')">
-      ${myPosters.slice(-2).reverse().map(p => `
-        <div class="card" style="margin-bottom:8px;overflow:hidden;cursor:pointer;">
+    <p class="section-title">📢 Постер & Мэдэгдэл</p>
+    <div style="margin-bottom:16px;">
+      ${[...myPosters].reverse().slice(0,3).map(p => `
+        <div class="card" style="margin-bottom:8px;overflow:hidden;cursor:pointer;" onclick="navigate('student-news')">
           ${p.imageData ? `<img src="${p.imageData}" alt="${p.title}" style="width:100%;max-height:160px;object-fit:cover;display:block;">` :
             p.imageUrl ? `<img src="${p.imageUrl}" alt="${p.title}" style="width:100%;max-height:160px;object-fit:cover;display:block;" onerror="this.style.display='none'">` : ''}
           <div style="padding:12px;">
             <div style="font-weight:800;font-size:14px;">${p.title}</div>
             ${p.description ? `<div style="font-size:12px;color:#6b7280;margin-top:4px;">${p.description.substring(0,80)}${p.description.length>80?'...':''}</div>` : ''}
           </div>
+        </div>`).join('')}
+    </div>` : ''}
+    ${myAds.length > 0 ? `
+    <p class="section-title">📋 Зар мэдэгдэл</p>
+    <div style="margin-bottom:16px;">
+      ${[...myAds].reverse().slice(0,3).map(a => `
+        <div class="ann-card" style="cursor:pointer;" onclick="navigate('student-news')">
+          <div style="font-weight:800;font-size:14px;margin-bottom:4px;">${a.title}</div>
+          <div style="font-size:13px;color:#374151;">${a.content}</div>
+          <div style="font-size:11px;color:#9ca3af;margin-top:6px;">📅 ${a.date}</div>
         </div>`).join('')}
     </div>` : ''}
     ${data.announcements.length > 0 ? `
