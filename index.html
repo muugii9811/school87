@@ -340,7 +340,6 @@
       <button type="button" onclick="showAnnouncementsModal()" style="display:block;width:100%;padding:14px;background:#fce7f3;color:#be185d;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer;">📢 САНАМЖ ХАРАХ</button>
     </div>
   </div>
-
   <p style="color:rgba(255,255,255,0.5);text-align:center;font-size:12px;margin-top:16px;">© 2026 87 дугаар сургууль</p>
 </div>
 
@@ -919,6 +918,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const p2 = document.getElementById('prefix2');
   GRADES_NUM.forEach(n => { p1.innerHTML += `<option value="${n}">${n}</option>`; });
   GROUPS.forEach(g => { p2.innerHTML += `<option value="${g}">${g}</option>`; });
+  // Локал өгөгдлийг хурдан ачаалж, нэвтрэх боломжтой болгоно
   const localData = loadLocal();
   if (localData && localData.users) {
     data = { ...data, ...localData };
@@ -926,8 +926,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   updateSyncStatus('offline');
   // Сануулах сонгосон бол автоматаар нэвтэрнэ
-  const remembered = localStorage.getItem('school87_remember');
-  if (remembered && data.currentUser) setTimeout(() => showApp(), 100);
+  const _rem = localStorage.getItem('school87_remember');
+  if (_rem && data.currentUser) setTimeout(() => showApp(), 100);
   initData();
 });
 
@@ -955,8 +955,8 @@ function handleTeacherLogin() {
   const user = data.users.find(u => (u.role === 'admin' || u.role === 'teacher') && u.regNumber === username && u.password === pwd);
   if (!user) { errBox.textContent = 'Нэвтрэх нэр эсвэл нууц үг буруу байна!'; errBox.classList.remove('hidden'); return; }
   errBox.classList.add('hidden');
-  const remember = document.getElementById('teacher-remember').checked;
-  if (remember) { localStorage.setItem('school87_remember', '1'); } else { localStorage.removeItem('school87_remember'); }
+  const _tr = document.getElementById('teacher-remember');
+  if (_tr && _tr.checked) { localStorage.setItem('school87_remember','1'); } else { localStorage.removeItem('school87_remember'); }
   data.currentUser = user;
   logActivity('Нэвтрэлт', `${user.role === 'admin' ? 'Админ' : 'Багш'} нэвтэрлээ`);
   saveData();
@@ -971,8 +971,8 @@ function handleStudentLogin() {
   const student = data.users.find(u => u.role === 'student' && u.regNumber === reg && u.password === pwd);
   if (!student) { errBox.textContent = 'Нэвтрэх код эсвэл нууц үг буруу байна!'; errBox.classList.remove('hidden'); return; }
   errBox.classList.add('hidden');
-  const remember = document.getElementById('student-remember').checked;
-  if (remember) { localStorage.setItem('school87_remember', '1'); } else { localStorage.removeItem('school87_remember'); }
+  const _sr = document.getElementById('student-remember');
+  if (_sr && _sr.checked) { localStorage.setItem('school87_remember','1'); } else { localStorage.removeItem('school87_remember'); }
   data.currentUser = student;
   logActivity('Нэвтрэлт', `Сурагч ${student.name} (${reg}) нэвтэрлээ`);
   saveData();
@@ -1003,9 +1003,8 @@ function showApp() {
   const isAdmin = data.currentUser.role === 'admin';
   document.getElementById('bottom-nav').classList.toggle('hidden', isStudent);
   document.getElementById('bottom-nav-student').classList.toggle('hidden', !isStudent);
-  // Судлагдахуун таб зөвхөн Админд харагдана
-  const subjTab = document.getElementById('nav-subjects');
-  if (subjTab) subjTab.style.display = isAdmin ? '' : 'none';
+  const _subjTab = document.getElementById('nav-subjects');
+  if (_subjTab) _subjTab.style.display = isAdmin ? '' : 'none';
   currentView = 'dashboard';
   render();
 }
@@ -1810,6 +1809,7 @@ function toggleTeacherClass(teacherId, className) {
   navigate('uc-subject-detail');
 }
 
+
 function showSubjectTeachers(headId) {
   const head = data.users.find(u => u.id === headId);
   if (!head) return;
@@ -1818,8 +1818,9 @@ function showSubjectTeachers(headId) {
     <h3 style="font-size:18px;font-weight:900;margin-bottom:4px;">📚 ${head.subject||'—'}</h3>
     <p style="font-size:13px;color:#6b7280;margin-bottom:16px;">⭐ Ахлагч: ${head.name}</p>
     <p style="font-size:14px;font-weight:800;margin-bottom:10px;">Багш нар (${teachers.length})</p>
-    ${teachers.length === 0 ? '<p style="text-align:center;padding:20px;color:#9ca3af;">Энэ судлагдахуунд багш бүртгэлгүй</p>' :
-      teachers.map(t => `
+    ${teachers.length === 0
+      ? '<p style="text-align:center;padding:20px;color:#9ca3af;">Энэ судлагдахуунд багш бүртгэлгүй</p>'
+      : teachers.map(t => `
         <div style="display:flex;align-items:center;gap:10px;padding:12px;border:1px solid #e5e7eb;border-radius:12px;margin-bottom:8px;">
           <div style="width:38px;height:38px;background:${t.isSubjectHead?'#fef9c3':'#eff6ff'};border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;">${t.isSubjectHead?'⭐':'👩‍🏫'}</div>
           <div>
@@ -1831,8 +1832,8 @@ function showSubjectTeachers(headId) {
   document.getElementById('modal').classList.remove('hidden');
 }
 
-function toggleSubjectHead(id) {
-  const t = data.users.find(u => u.id === id);
+function toggleSubjectHead(teacherId) {
+  const t = data.users.find(u => u.id === teacherId);
   if (!t) return;
   t.isSubjectHead = !t.isSubjectHead;
   logActivity('Ахлагч тохируулав', `${t.name} → ${t.isSubjectHead?'Ахлагч болов':'Ахлагч болиов'}`);
