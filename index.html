@@ -32,11 +32,14 @@
       min-height: 100vh;
       background: #f0f4ff;
       position: relative;
-      overflow-x: hidden;
+      overflow-x: clip;
+      overflow-y: visible;
       padding-bottom: env(safe-area-inset-bottom);
       overscroll-behavior: none;
       box-shadow: 0 0 40px rgba(0,0,0,0.18);
     }
+    /* Ensure scrolling happens on body/html, not on app-shell */
+    html, body { overflow-y: auto; height: auto; }
 
     /* ── Hide scrollbar ── */
     ::-webkit-scrollbar { display: none; }
@@ -103,7 +106,7 @@
     /* ── Content area ── */
     #content {
       padding: 16px;
-      padding-bottom: calc(80px + env(safe-area-inset-bottom));
+      padding-bottom: calc(100px + env(safe-area-inset-bottom));
     }
 
     /* ── Cards ── */
@@ -120,6 +123,7 @@
       padding: 16px;
       color: white;
       text-align: center;
+      overflow: visible;
     }
 
     /* ── Inputs ── */
@@ -1131,8 +1135,8 @@ function renderAdminDashboard() {
 
   return `
     <div style="background:linear-gradient(135deg,#1d4ed8,#4f46e5);border-radius:20px;padding:20px;margin-bottom:16px;color:white;">
-      <p style="opacity:0.8;font-size:13px;margin:0 0 4px;">${roleLabel}-ын хянах самбар</p>
-      <h2 style="font-size:22px;font-weight:900;margin:0;">Сайн уу, ${user.name.split('.')[0]}! 👋</h2>
+      <p style="opacity:0.8;font-size:13px;margin:0 0 4px;">${isAdmin ? 'Админы хянах самбар' : 'Багшийн хянах самбар'}</p>
+      <h2 style="font-size:22px;font-weight:900;margin:0;">Сайн уу, ${user.name}! 👋</h2>
     </div>
     ${!isAdmin ? renderTeacherCuratorBlock() : ''}
 
@@ -1569,6 +1573,26 @@ function renderManageUsers() {
             </div>` : ''}
           </div>`).join('')}
     </div>
+
+    ${isAdmin ? `
+    <p class="section-title">👩‍🏫 Бүх багш нар (${teachers.length})</p>
+    <div class="card" style="margin-bottom:14px;overflow:hidden;">
+      ${teachers.length === 0 ? '<p style="text-align:center;padding:14px;color:#9ca3af;font-size:13px;">Багш бүртгэлгүй</p>' :
+        teachers.map(u => `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #f1f5f9;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="width:34px;height:34px;background:#eff6ff;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;">${u.isSubjectHead ? '⭐' : '👩‍🏫'}</div>
+              <div>
+                <div style="font-weight:800;font-size:13px;">${u.name}</div>
+                <div style="font-size:11px;color:#6b7280;font-family:monospace;">${u.regNumber} • ${u.subject || '—'}</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:4px;">
+              <button onclick="showEditUserModal(${u.id})" style="background:#eff6ff;color:#1d4ed8;border:none;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">✏️</button>
+              <button onclick="deleteTeacher(${u.id})" style="background:#fef2f2;color:#dc2626;border:none;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">🗑️</button>
+            </div>
+          </div>`).join('')}
+    </div>` : ''}
 
     ${isAdmin && lastStudents.length > 0 ? `
     <p class="section-title">🕐 Сүүлд нэмэгдсэн сурагчид</p>
@@ -2072,6 +2096,19 @@ function deleteUser(id) {
   const u = data.users.find(x => x.id === id);
   data.users = data.users.filter(x => x.id !== id);
   logActivity('Хэрэглэгч устгав', u ? `${u.name} (${u.regNumber})` : '');
+  saveData(); render();
+}
+
+function deleteTeacher(id) {
+  const u = data.users.find(x => x.id === id);
+  if (!u) return;
+  const examCount = data.exams.filter(e => e.createdByName === u.name).length;
+  const msg = examCount > 0
+    ? `"${u.name}" багшийг устгах уу?\n\n⚠️ Тэдний ${examCount} сорил системд үлдэнэ.`
+    : `"${u.name}" багшийг устгах уу?`;
+  if (!confirm(msg)) return;
+  data.users = data.users.filter(x => x.id !== id);
+  logActivity('Багш устгав', `${u.name} (${u.regNumber}) устгагдсан`);
   saveData(); render();
 }
 
