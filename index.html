@@ -20,11 +20,22 @@
     * { font-family: 'Nunito', sans-serif; -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
     body {
       margin: 0;
-      background: #f0f4ff;
+      background: #cbd5e1;
       min-height: 100vh;
-      min-height: -webkit-fill-available;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+    }
+    #app-shell {
+      width: 100%;
+      max-width: 480px;
+      min-height: 100vh;
+      background: #f0f4ff;
+      position: relative;
+      overflow-x: hidden;
       padding-bottom: env(safe-area-inset-bottom);
       overscroll-behavior: none;
+      box-shadow: 0 0 40px rgba(0,0,0,0.18);
     }
 
     /* ── Hide scrollbar ── */
@@ -274,12 +285,13 @@
     .atbl th { background:#f8fafc;font-weight:800;color:#475569; }
     .atbl tr:nth-child(even) td { background:#f9fafb; }
     /* ── Student nav additional ── */
-    #bottom-nav-student { position:fixed;bottom:0;left:0;right:0;background:white;border-top:1px solid #e5e7eb;padding-bottom:env(safe-area-inset-bottom);z-index:500;box-shadow:0 -4px 20px rgba(0,0,0,0.08); }
+    #bottom-nav-student { position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:white;border-top:1px solid #e5e7eb;padding-bottom:env(safe-area-inset-bottom);z-index:500;box-shadow:0 -4px 20px rgba(0,0,0,0.08); }
     /* ── Login card ── */
     #login-page { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; padding: 24px 20px; background: linear-gradient(160deg, #1d4ed8 0%, #4f46e5 50%, #7c3aed 100%); }
   </style>
 </head>
 <body>
+<div id="app-shell">
 
 <!-- =========== LOGIN PAGE =========== -->
 <div id="login-page">
@@ -379,11 +391,15 @@
         <span class="icon">➕</span>
         <span>Сорил</span>
       </button>
+      <button class="nav-tab" id="nav-classes" onclick="navigate('uc-classes')">
+        <span class="icon">🏫</span>
+        <span>Ангиуд</span>
+      </button>
       <button class="nav-tab" id="nav-subjects" onclick="navigate('subjects')" style="display:none;">
         <span class="icon">📚</span>
-        <span>Судлагдахуун</span>
+        <span>Хичээл</span>
       </button>
-      <button class="nav-tab" id="nav-users" onclick="navigate('manage-users')">
+      <button class="nav-tab" id="nav-users" onclick="navigate('manage-users')" style="display:none;">
         <span class="icon">👥</span>
         <span>Хэрэглэгч</span>
       </button>
@@ -424,6 +440,7 @@
     <div id="modal-body"></div>
   </div>
 </div>
+</div><!-- end app-shell -->
 
 <script>
 // ============ FIREBASE CONFIG ============
@@ -520,13 +537,7 @@ const DEFAULT_DATA = {
   sentAnalyses: [],
   subjects: [
     { id: 1, name: 'Математик', color: '#3b82f6', icon: '📐' },
-    { id: 2, name: 'Физик', color: '#8b5cf6', icon: '⚡' },
-    { id: 3, name: 'Монгол хэл', color: '#10b981', icon: '📖' },
-    { id: 4, name: 'Түүх', color: '#f59e0b', icon: '🏛️' },
-    { id: 5, name: 'Биологи', color: '#ec4899', icon: '🌿' },
-    { id: 6, name: 'Хими', color: '#ef4444', icon: '🧪' },
-    { id: 7, name: 'Газарзүй', color: '#14b8a6', icon: '🌍' },
-    { id: 8, name: 'Англи хэл', color: '#f97316', icon: '🌐' }
+    { id: 2, name: 'Монгол хэл', color: '#10b981', icon: '📖' }
   ]
 };
 
@@ -1005,6 +1016,10 @@ function showApp() {
   document.getElementById('bottom-nav-student').classList.toggle('hidden', !isStudent);
   const _subjTab = document.getElementById('nav-subjects');
   if (_subjTab) _subjTab.style.display = isAdmin ? '' : 'none';
+  const _usersTab = document.getElementById('nav-users');
+  if (_usersTab) _usersTab.style.display = isAdmin ? '' : 'none';
+  const _classesTab = document.getElementById('nav-classes');
+  if (_classesTab) _classesTab.style.display = (!isStudent) ? '' : 'none';
   currentView = 'dashboard';
   render();
 }
@@ -1027,6 +1042,7 @@ function render() {
       case 'uc-subjects': content.innerHTML = renderUCSubjects(); break;
       case 'uc-subject-detail': content.innerHTML = renderUCSubjectDetail(); break;
       case 'teacher-my-classes': content.innerHTML = renderTeacherMyClasses(); break;
+      case 'teacher-classes-subject': content.innerHTML = renderTeacherClassSubject(); break;
       case 'manage-announcements': content.innerHTML = renderManageAnnouncements(); break;
       case 'exam-detail': content.innerHTML = renderExamDetail(); break;
       case 'analytics': content.innerHTML = renderAnalytics(); break;
@@ -1056,7 +1072,7 @@ function render() {
 function updateNavActive() {
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   const map = { dashboard: 'nav-home', 'create-exam': 'nav-exams', 'bulk-import': 'nav-exams',
-    'manage-users': 'nav-users', 'excel-import': 'nav-users', 'manage-classes': 'nav-users', 'uc-classes': 'nav-users', 'uc-class-detail': 'nav-users', 'uc-subjects': 'nav-users', 'uc-subject-detail': 'nav-users', 'teacher-my-classes': 'nav-users',
+    'manage-users': 'nav-users', 'excel-import': 'nav-users', 'manage-classes': 'nav-users', 'uc-classes': 'nav-classes', 'uc-class-detail': 'nav-classes', 'teacher-classes-subject': 'nav-classes', 'uc-subjects': 'nav-users', 'uc-subject-detail': 'nav-users', 'teacher-my-classes': 'nav-classes',
     analytics: 'nav-stats', 'activity-log': 'nav-stats', 'posters': 'nav-stats',
     subjects: 'nav-subjects', 'subject-detail': 'nav-subjects',
     'my-results': 'snav-results', 'available-exams': 'snav-exams', 'student-news': 'snav-news' };
@@ -1071,6 +1087,39 @@ function navigate(view, examId) {
 }
 
 // ============ ADMIN/TEACHER DASHBOARD ============
+
+function goToCuratorClass(id) { ucCurrentClassId = id; navigate('uc-class-detail'); }
+
+function renderTeacherCuratorBlock() {
+  var user = data.currentUser;
+  var myClass2 = (data.classes||[]).find(function(cl){ return cl.teacherId === user.id; });
+  var curatorPosters = (data.posters||[]).filter(function(p){ return p.target === 'all' || p.target === 'teacher'; });
+  if (!myClass2 && curatorPosters.length === 0) return '';
+  var h = '';
+  if (myClass2) {
+    var cnt = data.users.filter(function(u){ return u.role === 'student' && u.grade === myClass2.name; }).length;
+    h += '<div style="background:linear-gradient(135deg,#0d9488,#0f766e);border-radius:16px;padding:14px;margin-bottom:14px;color:white;display:flex;align-items:center;gap:12px;cursor:pointer;" onclick="goToCuratorClass(' + myClass2.id + ')">';
+    h += '<div style="font-size:28px;">🏫</div><div>';
+    h += '<div style="font-weight:900;font-size:16px;">' + myClass2.name + ' — Куратор анги</div>';
+    h += '<div style="opacity:0.85;font-size:12px;">' + cnt + ' сурагч → харах</div>';
+    h += '</div></div>';
+  }
+  if (curatorPosters.length > 0) {
+    h += '<p class="section-title">📢 Мэдэгдэл</p>';
+    curatorPosters.slice(-2).reverse().forEach(function(p) {
+      h += '<div class="card" style="margin-bottom:8px;overflow:hidden;">';
+      var imgStyle = 'width:100%;max-height:160px;object-fit:cover;display:block;';
+      if (p.imageData) h += '<img src="' + p.imageData + '" style="' + imgStyle + '">';
+      else if (p.imageUrl) h += '<img src="' + p.imageUrl + '" style="' + imgStyle + '" onerror="this.setAttribute(\"style\",\"display:none\")">';
+      h += '<div style="padding:12px;">';
+      h += '<div style="font-weight:800;font-size:14px;">' + p.title + '</div>';
+      if (p.description) h += '<div style="font-size:12px;color:#6b7280;margin-top:4px;">' + p.description.substring(0,100) + '</div>';
+      h += '</div></div>';
+    });
+  }
+  return h;
+}
+
 function renderAdminDashboard() {
   const user = data.currentUser;
   const isAdmin = user.role === 'admin';
@@ -1085,6 +1134,7 @@ function renderAdminDashboard() {
       <p style="opacity:0.8;font-size:13px;margin:0 0 4px;">${roleLabel}-ын хянах самбар</p>
       <h2 style="font-size:22px;font-weight:900;margin:0;">Сайн уу, ${user.name.split('.')[0]}! 👋</h2>
     </div>
+    ${!isAdmin ? renderTeacherCuratorBlock() : ''}
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
       <div class="stat-card" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);">
@@ -1472,7 +1522,7 @@ function renderManageUsers() {
   return `
     <div style="background:linear-gradient(135deg,#1d4ed8,#4f46e5);border-radius:20px;padding:18px;margin-bottom:14px;color:white;">
       <h2 style="font-size:20px;font-weight:900;margin:0;">👥 Хэрэглэгчид</h2>
-      <p style="opacity:0.8;font-size:12px;margin:4px 0 0;">${isAdmin?'Системийн тохиргоо':isTeacher?(amSubjectHead?'Судлагдахууны ахлагч':'Багш'):'Хэрэглэгч'}</p>
+      <p style="opacity:0.8;font-size:12px;margin:4px 0 0;">${isAdmin?'Системийн тохиргоо':isTeacher?(amSubjectHead?'Хичээлийн ахлагч':'Багш'):'Хэрэглэгч'}</p>
     </div>
 
     ${isAdmin ? `
@@ -1487,7 +1537,7 @@ function renderManageUsers() {
         <span class="icon">🏫</span><span class="label">Ангиуд</span>
       </button>
       <button class="menu-btn" onclick="navigate('uc-subjects')">
-        <span class="icon">📚</span><span class="label">Судлагдахуун</span>
+        <span class="icon">📚</span><span class="label">Хичээл</span>
       </button>
       ${isAdmin ? `
       <button class="menu-btn" onclick="navigate('manage-classes')">
@@ -1496,13 +1546,10 @@ function renderManageUsers() {
       <button class="menu-btn" onclick="navigate('excel-import')">
         <span class="icon">📊</span><span class="label">Excel оруулах</span>
       </button>` : ''}
-      ${isTeacher ? `
-      <button class="menu-btn" onclick="navigate('teacher-my-classes')">
-        <span class="icon">🎓</span><span class="label">Миний ангиуд</span>
-      </button>` : ''}
+
     </div>
 
-    <p class="section-title">⭐ Судлагдахууны ахлагч нар (${subjectHeads.length})</p>
+    <p class="section-title">⭐ Хичээлийн ахлагч нар (${subjectHeads.length})</p>
     <div class="card" style="margin-bottom:14px;overflow:hidden;">
       ${subjectHeads.length === 0 ? '<p style="text-align:center;padding:14px;color:#9ca3af;font-size:13px;">Ахлагч бүртгэлгүй</p>' :
         subjectHeads.map(u => `
@@ -1511,7 +1558,7 @@ function renderManageUsers() {
               <div style="width:34px;height:34px;background:#fef9c3;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;">⭐</div>
               <div>
                 <div style="font-weight:800;font-size:13px;">${u.name}</div>
-                <div style="font-size:11px;color:#6b7280;">${u.subject||'—'} • <span style="color:#3b82f6;">багш нарыг харах →</span></div>
+                <div style="font-size:11px;color:#6b7280;">${(u.subjects||[u.subject]).filter(Boolean).join(', ')||'—'} • <span style="color:#3b82f6;">багш нарыг харах →</span></div>
               </div>
             </div>
             ${isAdmin ? `
@@ -1578,43 +1625,70 @@ function renderUCClasses() {
     </div>`;
 }
 
+let ucCurrentSubjectForClass = null;
+
 function renderUCClassDetail() {
   if (!data.classes) data.classes = [];
-  const cls = data.classes.find(cl => cl.id === ucCurrentClassId);
+  var cls = data.classes.find(function(cl){ return cl.id === ucCurrentClassId; });
   if (!cls) return renderUCClasses();
-  const user = data.currentUser;
-  const isAdmin = user.role === 'admin';
-  const teacher = data.users.find(u => u.id === cls.teacherId);
-  const isClassTeacher = user.role === 'teacher' && cls.teacherId === user.id;
-  const canManage = isAdmin || isClassTeacher;
-  const studs = data.users.filter(u => u.role === 'student' && u.grade === cls.name);
+  var user = data.currentUser;
+  var isAdmin = user.role === 'admin';
+  var isTeacher = user.role === 'teacher';
+  var teacher = data.users.find(function(u){ return u.id === cls.teacherId; });
+  var isClassTeacher = isTeacher && cls.teacherId === user.id;
+  var canManage = isAdmin || isClassTeacher;
+  var studs = data.users.filter(function(u){ return u.role === 'student' && u.grade === cls.name; });
+  var myT = isTeacher ? data.users.find(function(u){ return u.id === user.id; }) : null;
+  var classSubjects = isTeacher
+    ? (data.subjects||[]).filter(function(subj){
+        return myT && ((myT.subjects||[]).includes(subj.name) || myT.subject === subj.name);
+      })
+    : [];
 
-  return `
-    <button onclick="navigate('uc-classes')" style="display:flex;align-items:center;gap:6px;color:#0f766e;background:none;border:none;font-weight:800;font-size:15px;cursor:pointer;padding:0;margin-bottom:14px;">← Буцах</button>
-    <div style="background:linear-gradient(135deg,#0d9488,#0f766e);border-radius:20px;padding:18px;margin-bottom:14px;color:white;">
-      <div style="font-size:28px;font-weight:900;">${cls.name}</div>
-      <div style="opacity:0.85;font-size:13px;">👩‍🏫 ${teacher?teacher.name:'Тохируулаагүй'} • 👨‍🎓 ${studs.length} сурагч</div>
-    </div>
-    ${canManage ? `
-    <div style="display:flex;gap:8px;margin-bottom:14px;">
-      <button onclick="showAddStudentToClass('${cls.name}')" class="btn-primary btn-green" style="flex:1;padding:12px;font-size:13px;">➕ Сурагч нэмэх</button>
-      <button onclick="showBulkAddToClass('${cls.name}')" style="flex:1;padding:12px;background:#eff6ff;color:#1d4ed8;border:none;border-radius:12px;font-weight:800;cursor:pointer;font-size:13px;">📋 Жагсаалтаар</button>
-    </div>` : ''}
-    <p class="section-title">👨‍🎓 Сурагчдын жагсаалт (${studs.length})</p>
-    <div class="card" style="overflow:hidden;">
-      ${studs.length === 0 ? '<p style="text-align:center;padding:20px;color:#9ca3af;">Сурагч байхгүй</p>' :
-        studs.map((u,i) => `
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #f1f5f9;">
-            <div style="display:flex;align-items:center;gap:10px;">
-              <span style="width:24px;height:24px;background:#f1f5f9;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#6b7280;flex-shrink:0;">${i+1}</span>
-              <div>
-                <div style="font-weight:800;font-size:13px;">${u.name}</div>
-                <div style="font-size:11px;color:#6b7280;font-family:monospace;">${u.regNumber}</div>
-              </div>
-            </div>
-            ${canManage ? `<button onclick="removeStudentFromClass(${u.id})" style="background:#fef2f2;color:#dc2626;border:none;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">🗑️</button>` : ''}
-          </div>`).join('')}
-    </div>`;
+  var h = '';
+  h += '<button onclick="navigate(\'uc-classes\')" style="display:flex;align-items:center;gap:6px;color:#0f766e;background:none;border:none;font-weight:800;font-size:15px;cursor:pointer;padding:0;margin-bottom:14px;">← Буцах</button>';
+  h += '<div style="background:linear-gradient(135deg,#0d9488,#0f766e);border-radius:20px;padding:18px;margin-bottom:14px;color:white;">';
+  h += '<div style="font-size:28px;font-weight:900;">' + cls.name + '</div>';
+  h += '<div style="opacity:0.85;font-size:13px;">👩‍🏫 ' + (teacher ? teacher.name : 'Тохируулаагүй') + ' • 👨‍🎓 ' + studs.length + ' сурагч</div>';
+  h += '</div>';
+
+  if (canManage) {
+    h += '<div style="display:flex;gap:8px;margin-bottom:14px;">';
+    h += '<button onclick="showAddStudentToClass(\'' + cls.name + '\')" class="btn-primary btn-green" style="flex:1;padding:12px;font-size:13px;">➕ Сурагч нэмэх</button>';
+    h += '<button onclick="showBulkAddToClass(\'' + cls.name + '\')" style="flex:1;padding:12px;background:#eff6ff;color:#1d4ed8;border:none;border-radius:12px;font-weight:800;cursor:pointer;font-size:13px;">📋 Жагсаалтаар</button>';
+    h += '</div>';
+  }
+
+  if (isTeacher && classSubjects.length > 0) {
+    h += '<p class="section-title">📚 Хичээлүүд</p>';
+    h += '<div style="margin-bottom:14px;">';
+    classSubjects.forEach(function(subj) {
+      h += '<div class="subj-card" style="margin-bottom:8px;" onclick="ucCurrentSubjectForClass=\'' + subj.name + '\';navigate(\'teacher-classes-subject\')">';
+      h += '<div style="width:44px;height:44px;background:' + subj.color + '22;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">' + subj.icon + '</div>';
+      h += '<div style="flex:1;"><div style="font-weight:900;font-size:14px;">' + subj.name + '</div>';
+      h += '<div style="font-size:11px;color:#6b7280;">Сорил харах →</div></div>';
+      h += '<span style="color:#9ca3af;font-size:18px;">›</span></div>';
+    });
+    h += '</div>';
+  }
+
+  h += '<p class="section-title">👨‍🎓 Сурагчдын жагсаалт (' + studs.length + ')</p>';
+  h += '<div class="card" style="overflow:hidden;">';
+  if (studs.length === 0) {
+    h += '<p style="text-align:center;padding:20px;color:#9ca3af;">Сурагч байхгүй</p>';
+  } else {
+    studs.forEach(function(u, i) {
+      h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #f1f5f9;">';
+      h += '<div style="display:flex;align-items:center;gap:10px;">';
+      h += '<span style="width:24px;height:24px;background:#f1f5f9;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#6b7280;flex-shrink:0;">' + (i+1) + '</span>';
+      h += '<div><div style="font-weight:800;font-size:13px;">' + u.name + '</div>';
+      h += '<div style="font-size:11px;color:#6b7280;font-family:monospace;">' + u.regNumber + '</div></div></div>';
+      if (canManage) h += '<button onclick="removeStudentFromClass(' + u.id + ')" style="background:#fef2f2;color:#dc2626;border:none;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">🗑️</button>';
+      h += '</div>';
+    });
+  }
+  h += '</div>';
+  return h;
 }
 
 function showAddStudentToClass(className) {
@@ -1721,23 +1795,34 @@ function renderUCSubjects() {
   return `
     <button onclick="navigate('manage-users')" style="display:flex;align-items:center;gap:6px;color:#6366f1;background:none;border:none;font-weight:800;font-size:15px;cursor:pointer;padding:0;margin-bottom:14px;">← Буцах</button>
     <div style="background:linear-gradient(135deg,#6366f1,#4f46e5);border-radius:20px;padding:18px;margin-bottom:14px;color:white;">
-      <h2 style="font-size:20px;font-weight:900;margin:0;">📚 Судлагдахуунууд</h2>
+      <h2 style="font-size:20px;font-weight:900;margin:0;">📚 Хичээлүүд</h2>
     </div>
-    ${isAdmin ? `<button onclick="showAddSubjectModal()" class="btn-primary btn-purple" style="margin-bottom:14px;">➕ Судлагдахуун нэмэх</button>` : ''}
+    ${isAdmin ? `<button onclick="showAddSubjectModal()" class="btn-primary btn-purple" style="margin-bottom:14px;">➕ Хичээл нэмэх</button>` : ''}
     <div>
       ${data.subjects.map(subj => {
         const subjTeachers = data.users.filter(u => u.role === 'teacher' && u.subject === subj.name);
         return `
-          <div class="subj-card" style="margin-bottom:8px;" onclick="ucCurrentSubjectId=${subj.id};navigate('uc-subject-detail')">
-            <div style="width:44px;height:44px;background:${subj.color}22;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">${subj.icon}</div>
-            <div style="flex:1;">
+          <div class="subj-card" style="margin-bottom:8px;">
+            <div style="width:44px;height:44px;background:${subj.color}22;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;cursor:pointer;" onclick="ucCurrentSubjectId=${subj.id};navigate('uc-subject-detail')">${subj.icon}</div>
+            <div style="flex:1;cursor:pointer;" onclick="ucCurrentSubjectId=${subj.id};navigate('uc-subject-detail')">
               <div style="font-weight:900;font-size:14px;">${subj.name}</div>
               <div style="font-size:11px;color:#6b7280;">👩‍🏫 ${subjTeachers.length} багш</div>
             </div>
-            <span style="color:#9ca3af;font-size:18px;">›</span>
+            ${isAdmin ? `<button onclick="event.stopPropagation();deleteSubject(${subj.id})" style="background:#fef2f2;color:#dc2626;border:none;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;margin-right:4px;">🗑️</button>` : ''}
+            <span style="color:#9ca3af;font-size:18px;cursor:pointer;" onclick="ucCurrentSubjectId=${subj.id};navigate('uc-subject-detail')">›</span>
           </div>`;
       }).join('')}
     </div>`;
+}
+
+
+function deleteSubject(id) {
+  const subj = (data.subjects||[]).find(s => s.id === id);
+  if (!subj) return;
+  if (!confirm('"' + subj.name + '" хичээлийг устгах уу?')) return;
+  data.subjects = data.subjects.filter(s => s.id !== id);
+  logActivity('Хичээл устгав', subj.name);
+  saveData(); render();
 }
 
 function renderUCSubjectDetail() {
@@ -1813,9 +1898,9 @@ function toggleTeacherClass(teacherId, className) {
 function showSubjectTeachers(headId) {
   const head = data.users.find(u => u.id === headId);
   if (!head) return;
-  const teachers = data.users.filter(u => u.role === 'teacher' && u.subject === head.subject);
+  const teachers = data.users.filter(u => u.role === 'teacher' && ((u.subjects||[]).includes(head.subject) || u.subject === head.subject));
   document.getElementById('modal-body').innerHTML = `
-    <h3 style="font-size:18px;font-weight:900;margin-bottom:4px;">📚 ${head.subject||'—'}</h3>
+    <h3 style="font-size:18px;font-weight:900;margin-bottom:4px;">📚 ${head.subject||'—'} хичээл</h3>
     <p style="font-size:13px;color:#6b7280;margin-bottom:16px;">⭐ Ахлагч: ${head.name}</p>
     <p style="font-size:14px;font-weight:800;margin-bottom:10px;">Багш нар (${teachers.length})</p>
     ${teachers.length === 0
@@ -1855,7 +1940,7 @@ function renderTeacherMyClasses() {
     </div>
     <p class="section-title">📋 Хичээл ордог ангиуд</p>
     <div style="margin-bottom:14px;">
-      ${myTeachingClasses.length === 0 ? `<div style="text-align:center;padding:30px;background:white;border-radius:16px;color:#9ca3af;"><p style="font-weight:700;">Анги тохируулаагүй байна</p><p style="font-size:12px;">Судлагдахууны ахлагч тохируулах болно</p></div>` :
+      ${myTeachingClasses.length === 0 ? `<div style="text-align:center;padding:30px;background:white;border-radius:16px;color:#9ca3af;"><p style="font-weight:700;">Анги тохируулаагүй байна</p><p style="font-size:12px;">Хичээлийн ахлагч тохируулах болно</p></div>` :
         myTeachingClasses.map(clName => {
           const cls = allClasses.find(cl => cl.name === clName);
           const studs = data.users.filter(u => u.role === 'student' && u.grade === clName);
@@ -1926,11 +2011,19 @@ function showAddUserModal(defaultRole) {
         <input id="au-name" type="text" class="input-field" placeholder="Батбаяр.Гэрэлмаа"></div>
       <div><label style="font-size:12px;font-weight:800;display:block;margin-bottom:5px;">Нэвтрэх код *</label>
         <input id="au-username" type="text" class="input-field" placeholder="bagsh001"></div>
-      <div><label style="font-size:12px;font-weight:800;display:block;margin-bottom:5px;">Судлагдахуун</label>
-        <input id="au-subject" type="text" class="input-field" placeholder="Математик, Физик..."></div>
+      <div>
+        <label style="font-size:12px;font-weight:800;display:block;margin-bottom:8px;">📚 Ордог хичээлүүд</label>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          ${(data.subjects||[]).map(s => `
+            <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:10px;cursor:pointer;">
+              <input type="checkbox" class="au-subj-check" value="${s.name}" style="width:18px;height:18px;cursor:pointer;">
+              <span style="font-size:13px;font-weight:700;">${s.icon} ${s.name}</span>
+            </label>`).join('')}
+        </div>
+      </div>
       <div style="display:flex;align-items:center;gap:10px;padding:12px;background:#fef9c3;border-radius:12px;">
         <input type="checkbox" id="au-ishead" style="width:18px;height:18px;">
-        <label for="au-ishead" style="font-size:13px;font-weight:800;color:#92400e;">⭐ Судлагдахууны ахлагч эрх олгох</label>
+        <label for="au-ishead" style="font-size:13px;font-weight:800;color:#92400e;">⭐ Хичээлийн ахлагч эрх олгох</label>
       </div>
       `}
       <div><label style="font-size:12px;font-weight:800;display:block;margin-bottom:5px;">Нууц үг *</label>
@@ -1964,11 +2057,12 @@ function addUser(defaultRole) {
   } else {
     const name = (document.getElementById('au-name') ? document.getElementById('au-name').value : '').trim();
     const username = (document.getElementById('au-username') ? document.getElementById('au-username').value : '').trim();
-    const subject = (document.getElementById('au-subject') ? document.getElementById('au-subject').value : '').trim();
+    const checkedSubjs = Array.from(document.querySelectorAll('.au-subj-check:checked')).map(c => c.value);
+    const subject = checkedSubjs[0] || '';
     if (!name || !username) { alert('Нэр болон нэвтрэх кодыг оруулна уу!'); return; }
     if (data.users.find(u => u.regNumber === username)) { alert('Энэ нэвтрэх код аль хэдийн бүртгэлтэй!'); return; }
     const isHead = document.getElementById('au-ishead') ? document.getElementById('au-ishead').checked : false;
-    data.users.push({ id: Date.now(), regNumber: username, password: pwd, name, role: 'teacher', subject, isSubjectHead: isHead, teachingClasses: [] });
+    data.users.push({ id: Date.now(), regNumber: username, password: pwd, name, role: 'teacher', subject, subjects: checkedSubjs, isSubjectHead: isHead, teachingClasses: [] });
     logActivity('Хэрэглэгч нэмэв', `${name} багш нэмэгдлээ`);
   }
   saveDataNow().then(() => { closeModal(); render(); });
@@ -2015,7 +2109,7 @@ function downloadTemplate(type) {
   const wb = XLSX.utils.book_new();
   const headers = type === 'student'
     ? [['Овог.Нэр', 'РД (Нэвтрэх код)', 'Нууц үг', 'Анги'], ['Батбаяр.Гэрэлмаа', '10А0001', '1234', '10-А']]
-    : [['Овог.Нэр', 'Нэвтрэх код', 'Нууц үг', 'Судлагдахуун'], ['Болормаа.Сарнай', 'bagsh001', 'teacher1', 'Математик']];
+    : [['Овог.Нэр', 'Нэвтрэх код', 'Нууц үг', 'Хичээл'], ['Болормаа.Сарнай', 'bagsh001', 'teacher1', 'Математик']];
   const ws = XLSX.utils.aoa_to_sheet(headers);
   XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
   XLSX.writeFile(wb, `${type === 'student' ? 'suraguud' : 'bagsh'}_template.xlsx`);
@@ -2685,9 +2779,9 @@ function renderSubjects() {
   return `
     <div style="background:linear-gradient(135deg,#6366f1,#4f46e5);border-radius:20px;padding:20px;margin-bottom:16px;color:white;">
       <p style="opacity:0.8;font-size:13px;margin:0 0 4px;">Хичээлийн</p>
-      <h2 style="font-size:22px;font-weight:900;margin:0;">📚 Судлагдахуунууд</h2>
+      <h2 style="font-size:22px;font-weight:900;margin:0;">📚 Хичээлүүд</h2>
     </div>
-    ${isAdmin ? `<button onclick="showAddSubjectModal()" class="btn-primary btn-purple" style="margin-bottom:14px;">➕ Судлагдахуун нэмэх</button>` : ''}
+    ${isAdmin ? `<button onclick="showAddSubjectModal()" class="btn-primary btn-purple" style="margin-bottom:14px;">➕ Хичээл нэмэх</button>` : ''}
     <div>
       ${data.subjects.map(subj => {
         const subjTeachers = data.users.filter(u => u.role === 'teacher' && u.subject === subj.name);
@@ -2748,7 +2842,7 @@ function renderSubjectDetail() {
 
 function showAddSubjectModal() {
   document.getElementById('modal-body').innerHTML = `
-    <h3 style="font-size:18px;font-weight:900;margin-bottom:16px;">➕ Судлагдахуун нэмэх</h3>
+    <h3 style="font-size:18px;font-weight:900;margin-bottom:16px;">➕ Хичээл нэмэх</h3>
     <div style="display:flex;flex-direction:column;gap:12px;">
       <div><label style="font-size:12px;font-weight:800;display:block;margin-bottom:5px;">Нэр *</label>
         <input id="subj-name" type="text" class="input-field" placeholder="Математик"></div>
@@ -3044,7 +3138,30 @@ function renderExamAnalysis() {
     <div style="margin-top:14px;padding:12px;background:#fef9c3;border-radius:12px;font-size:12px;color:#92400e;">
       <strong>Шалгалт авсан багш:</strong> ${exam.createdByName}
     </div>
-    <button onclick="sendAnalysisToClassTeacher(${exam.id})" class="btn-primary btn-orange" style="margin-top:12px;">📤 Анги удирдсан багшид илгээх</button>`;
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button onclick="exportAnalysisToExcel(${exam.id})" class="btn-primary btn-green" style="flex:1;">📥 Excel татах</button>
+      <button onclick="sendAnalysisToClassTeacher(${exam.id})" class="btn-primary btn-orange" style="flex:1;">📤 Багшид илгээх</button>
+    </div>`;
+}
+
+
+function exportAnalysisToExcel(examId) {
+  const exam = data.exams.find(e => e.id === examId);
+  if (!exam) return;
+  const subs = data.submissions.filter(s => s.examId === examId);
+  if (subs.length === 0) { alert('Өгсөн сурагч байхгүй!'); return; }
+  const totalPts = exam.questions.reduce((t,q) => t+q.points, 0);
+  // Header
+  const headers = [['№','Овог нэр','Нэвтрэх код', ...exam.questions.map((_,i) => (i+1)+'асуулт'), 'Авах оноо','Авсан оноо','Хувь','Түвшин']];
+  const rows = subs.map((s,idx) => {
+    const lvl = s.percentage>=90?'VIII':s.percentage>=80?'VII':s.percentage>=70?'VI':s.percentage>=60?'V':s.percentage>=50?'IV':s.percentage>=40?'III':s.percentage>=30?'II':'I';
+    const qScores = exam.questions.map((q,qi) => (s.answers && s.answers[qi] === q.correctAnswer) ? q.points : 0);
+    return [idx+1, s.studentName||'', s.studentReg||'', ...qScores, totalPts, s.score, s.percentage+'%', lvl];
+  });
+  const ws = XLSX.utils.aoa_to_sheet([...headers, ...rows]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Нэгтгэл');
+  XLSX.writeFile(wb, exam.title.replace(/\s+/g,'_') + '_негтгел.xlsx');
 }
 
 function sendAnalysisToClassTeacher(examId) {
