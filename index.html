@@ -302,15 +302,19 @@
     <div id="form-teacher" class="space-y-3">
       <div>
         <label style="font-size:13px;font-weight:800;color:#374151;display:block;margin-bottom:6px;">Нэвтрэх код</label>
-        <input type="text" id="teacher-username" placeholder="Жишээ: 10А0001"
+        <input type="text" id="teacher-username"
           class="input-field" style="text-align:center;font-family:monospace;letter-spacing:0.1em;font-size:20px!important;font-weight:700;">
       </div>
       <div>
         <label style="font-size:13px;font-weight:800;color:#374151;display:block;margin-bottom:6px;">Нууц үг</label>
-        <input type="password" id="teacher-password" placeholder="••••••"
+        <input type="password" id="teacher-password"
           class="input-field" onkeydown="if(event.key==='Enter') handleLogin()">
       </div>
       <div id="login-error" class="hidden" style="padding:12px;background:#fef2f2;border:2px solid #fecaca;border-radius:12px;color:#dc2626;font-size:13px;font-weight:700;"></div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:#374151;cursor:pointer;padding:4px 0;">
+        <input type="checkbox" id="teacher-remember" style="width:18px;height:18px;cursor:pointer;">
+        🔒 Нэвтрэх мэдээлэл хадгалах
+      </label>
       <button onclick="handleLogin()" class="btn-primary" style="margin-top:8px;">НЭВТРЭХ →</button>
       <button type="button" onclick="showAnnouncementsModal()" style="display:block;width:100%;padding:14px;background:#fce7f3;color:#be185d;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer;">📢 САНАМЖ ХАРАХ</button>
     </div>
@@ -318,94 +322,27 @@
     <!-- Student form -->
     <div id="form-student" class="space-y-3 hidden">
       <div>
-        <label style="font-size:13px;font-weight:800;color:#374151;display:block;margin-bottom:6px;">Нэвтрэх код (РД дугаар)</label>
-        <input type="text" id="student-username" placeholder="Жишээ: 10А0001"
+        <label style="font-size:13px;font-weight:800;color:#374151;display:block;margin-bottom:6px;">Нэвтрэх код</label>
+        <input type="text" id="student-username"
           class="input-field" style="text-align:center;font-family:monospace;letter-spacing:0.1em;font-size:20px!important;font-weight:700;">
-        <p style="font-size:11px;color:#9ca3af;margin-top:4px;">Анги + Бүлэг + РД дугаар (жш: 10А0001)</p>
       </div>
       <div>
         <label style="font-size:13px;font-weight:800;color:#374151;display:block;margin-bottom:6px;">Нууц үг</label>
-        <input type="password" id="student-password" placeholder="••••••"
+        <input type="password" id="student-password"
           class="input-field" onkeydown="if(event.key==='Enter') handleLogin()">
       </div>
       <div id="login-error-student" class="hidden" style="padding:12px;background:#fef2f2;border:2px solid #fecaca;border-radius:12px;color:#dc2626;font-size:13px;font-weight:700;"></div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:#374151;cursor:pointer;padding:4px 0;">
+        <input type="checkbox" id="student-remember" style="width:18px;height:18px;cursor:pointer;">
+        🔒 Нэвтрэх мэдээлэл хадгалах
+      </label>
       <button onclick="handleLogin()" class="btn-primary btn-green" style="margin-top:8px;">НЭВТРЭХ →</button>
       <button type="button" onclick="showAnnouncementsModal()" style="display:block;width:100%;padding:14px;background:#fce7f3;color:#be185d;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer;">📢 САНАМЖ ХАРАХ</button>
     </div>
   </div>
-  <!-- ===== APP INSTALL SECTION ===== -->
-  <div style="margin-top:16px;">
-
-    <!-- iOS суулгах -->
-    <div id="install-ios" class="hidden" style="background:rgba(255,255,255,0.12);border:1.5px solid rgba(255,255,255,0.25);border-radius:20px;padding:18px;text-align:center;margin-bottom:10px;">
-      <div style="font-size:28px;margin-bottom:6px;">📱</div>
-      <div style="color:white;font-weight:900;font-size:15px;margin-bottom:4px;">iPhone апп суулгах</div>
-      <div style="color:rgba(255,255,255,0.7);font-size:12px;margin-bottom:14px;">Safari браузераар нэг товшилтоор суулгана</div>
-      <button onclick="installIOS()" style="display:block;width:100%;padding:14px;background:white;color:#1d4ed8;border:none;border-radius:14px;font-size:15px;font-weight:900;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,0.2);">
-        ⬇️ iOS апп суулгах (IPA)
-      </button>
-      <p id="ios-status" style="color:rgba(255,255,255,0.8);font-size:11px;margin-top:10px;margin-bottom:0;line-height:1.5;"></p>
-    </div>
-
-    <!-- Android суулгах -->
-    <div id="install-android" class="hidden" style="background:rgba(255,255,255,0.12);border:1.5px solid rgba(255,255,255,0.25);border-radius:20px;padding:18px;text-align:center;margin-bottom:10px;">
-      <div style="font-size:28px;margin-bottom:6px;">🤖</div>
-      <div style="color:white;font-weight:900;font-size:15px;margin-bottom:4px;">Android апп суулгах</div>
-      <div style="color:rgba(255,255,255,0.7);font-size:12px;margin-bottom:14px;">APK файл татаж суулгана</div>
-      <button onclick="installAndroid()" style="display:block;width:100%;padding:14px;background:white;color:#059669;border:none;border-radius:14px;font-size:15px;font-weight:900;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,0.2);">
-        ⬇️ Android апп татах (APK)
-      </button>
-      <p id="android-status" style="color:rgba(255,255,255,0.8);font-size:11px;margin-top:10px;margin-bottom:0;line-height:1.5;"></p>
-    </div>
-
-  </div>
 
   <p style="color:rgba(255,255,255,0.5);text-align:center;font-size:12px;margin-top:16px;">© 2026 87 дугаар сургууль</p>
 </div>
-
-<script>
-// ============ APP INSTALL ============
-const IOS_MANIFEST_URL = 'https://muugii9811.github.io/school87/manifest.plist';
-const ANDROID_APK_URL  = 'https://muugii9811.github.io/school87/school87.apk';
-
-(function detectDevice() {
-  const ua = navigator.userAgent || '';
-  if (/iPhone|iPad|iPod/i.test(ua)) {
-    document.getElementById('install-ios').classList.remove('hidden');
-  } else if (/Android/i.test(ua)) {
-    document.getElementById('install-android').classList.remove('hidden');
-  }
-})();
-
-function installIOS() {
-  const st = document.getElementById('ios-status');
-  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-  if (!isSafari) {
-    st.innerHTML = '⚠️ Safari браузер ашиглана уу!<br>Chrome дээр ажиллахгүй.';
-    st.style.color = '#fbbf24';
-    return;
-  }
-  st.textContent = '⏳ Суулгаж байна...';
-  window.location.href = 'itms-services://?action=download-manifest&url=' + encodeURIComponent(IOS_MANIFEST_URL);
-  setTimeout(function() {
-    st.innerHTML = '✅ "Суулгах" товч дарна уу.<br>⚙️ Settings → General → VPN & Device Management → Trust';
-  }, 1500);
-}
-
-function installAndroid() {
-  const st = document.getElementById('android-status');
-  st.textContent = '⏳ Татаж байна...';
-  var a = document.createElement('a');
-  a.href = ANDROID_APK_URL;
-  a.download = 'school87.apk';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(function() {
-    st.innerHTML = '✅ Татагдлаа! Файлын менежер → school87.apk → Суулгах<br>⚙️ Settings → Security → Unknown sources зөвшөөрнө үү';
-  }, 2000);
-}
-</script>
 
 <!-- =========== MAIN APP =========== -->
 <div id="main-app" class="hidden">
@@ -443,7 +380,7 @@ function installAndroid() {
         <span class="icon">➕</span>
         <span>Сорил</span>
       </button>
-      <button class="nav-tab" id="nav-subjects" onclick="navigate('subjects')">
+      <button class="nav-tab" id="nav-subjects" onclick="navigate('subjects')" style="display:none;">
         <span class="icon">📚</span>
         <span>Судлагдахуун</span>
       </button>
@@ -982,16 +919,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   const p2 = document.getElementById('prefix2');
   GRADES_NUM.forEach(n => { p1.innerHTML += `<option value="${n}">${n}</option>`; });
   GROUPS.forEach(g => { p2.innerHTML += `<option value="${g}">${g}</option>`; });
-  // Локал өгөгдлийг хурдан ачаалж, нэвтрэх боломжтой болгоно
   const localData = loadLocal();
   if (localData && localData.users) {
     data = { ...data, ...localData };
     if (!data.activityLog) data.activityLog = [];
   }
   updateSyncStatus('offline');
-  // Хэрэв аль хэдийн нэвтэрсэн байвал тэр даруй апп харуулна
-  if (data.currentUser) setTimeout(() => showApp(), 100);
-  // Firebase-г ар талд ачаална (нэвтрэхийг хаахгүй)
+  // Сануулах сонгосон бол автоматаар нэвтэрнэ
+  const remembered = localStorage.getItem('school87_remember');
+  if (remembered && data.currentUser) setTimeout(() => showApp(), 100);
   initData();
 });
 
@@ -1019,6 +955,8 @@ function handleTeacherLogin() {
   const user = data.users.find(u => (u.role === 'admin' || u.role === 'teacher') && u.regNumber === username && u.password === pwd);
   if (!user) { errBox.textContent = 'Нэвтрэх нэр эсвэл нууц үг буруу байна!'; errBox.classList.remove('hidden'); return; }
   errBox.classList.add('hidden');
+  const remember = document.getElementById('teacher-remember').checked;
+  if (remember) { localStorage.setItem('school87_remember', '1'); } else { localStorage.removeItem('school87_remember'); }
   data.currentUser = user;
   logActivity('Нэвтрэлт', `${user.role === 'admin' ? 'Админ' : 'Багш'} нэвтэрлээ`);
   saveData();
@@ -1033,6 +971,8 @@ function handleStudentLogin() {
   const student = data.users.find(u => u.role === 'student' && u.regNumber === reg && u.password === pwd);
   if (!student) { errBox.textContent = 'Нэвтрэх код эсвэл нууц үг буруу байна!'; errBox.classList.remove('hidden'); return; }
   errBox.classList.add('hidden');
+  const remember = document.getElementById('student-remember').checked;
+  if (remember) { localStorage.setItem('school87_remember', '1'); } else { localStorage.removeItem('school87_remember'); }
   data.currentUser = student;
   logActivity('Нэвтрэлт', `Сурагч ${student.name} (${reg}) нэвтэрлээ`);
   saveData();
@@ -1041,6 +981,7 @@ function handleStudentLogin() {
 function logout() {
   if (data.currentUser) logActivity('Гарах', `${data.currentUser.name} системээс гарлаа`);
   data.currentUser = null;
+  localStorage.removeItem('school87_remember');
   saveData();
   document.getElementById('main-app').classList.add('hidden');
   document.getElementById('login-page').style.display = '';
@@ -1059,8 +1000,12 @@ function showApp() {
   const roleLabel = {admin:'👨‍💼 Админ', teacher:'👩‍🏫 Багш', student:'👨‍🎓 Сурагч'}[data.currentUser.role] || '';
   document.getElementById('user-reg').textContent = roleLabel + ' • ' + data.currentUser.regNumber;
   const isStudent = data.currentUser.role === 'student';
+  const isAdmin = data.currentUser.role === 'admin';
   document.getElementById('bottom-nav').classList.toggle('hidden', isStudent);
   document.getElementById('bottom-nav-student').classList.toggle('hidden', !isStudent);
+  // Судлагдахуун таб зөвхөн Админд харагдана
+  const subjTab = document.getElementById('nav-subjects');
+  if (subjTab) subjTab.style.display = isAdmin ? '' : 'none';
   currentView = 'dashboard';
   render();
 }
@@ -1562,19 +1507,19 @@ function renderManageUsers() {
     <div class="card" style="margin-bottom:14px;overflow:hidden;">
       ${subjectHeads.length === 0 ? '<p style="text-align:center;padding:14px;color:#9ca3af;font-size:13px;">Ахлагч бүртгэлгүй</p>' :
         subjectHeads.map(u => `
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #f1f5f9;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #f1f5f9;cursor:pointer;" onclick="showSubjectTeachers(${u.id})">
             <div style="display:flex;align-items:center;gap:10px;">
               <div style="width:34px;height:34px;background:#fef9c3;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;">⭐</div>
               <div>
                 <div style="font-weight:800;font-size:13px;">${u.name}</div>
-                <div style="font-size:11px;color:#6b7280;">${u.subject||'—'}</div>
+                <div style="font-size:11px;color:#6b7280;">${u.subject||'—'} • <span style="color:#3b82f6;">багш нарыг харах →</span></div>
               </div>
             </div>
             ${isAdmin ? `
             <div style="display:flex;gap:4px;">
-              <button onclick="showEditUserModal(${u.id})" style="background:#eff6ff;color:#1d4ed8;border:none;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">✏️</button>
-              <button onclick="toggleSubjectHead(${u.id})" style="background:#fef9c3;color:#92400e;border:none;border-radius:8px;padding:7px 10px;font-size:11px;cursor:pointer;">⭐ Хасах</button>
-              <button onclick="deleteUser(${u.id})" style="background:#fef2f2;color:#dc2626;border:none;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">🗑️</button>
+              <button onclick="event.stopPropagation();showEditUserModal(${u.id})" style="background:#eff6ff;color:#1d4ed8;border:none;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">✏️</button>
+              <button onclick="event.stopPropagation();toggleSubjectHead(${u.id})" style="background:#fef9c3;color:#92400e;border:none;border-radius:8px;padding:7px 10px;font-size:11px;cursor:pointer;">⭐ Хасах</button>
+              <button onclick="event.stopPropagation();deleteUser(${u.id})" style="background:#fef2f2;color:#dc2626;border:none;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">🗑️</button>
             </div>` : ''}
           </div>`).join('')}
     </div>
@@ -1865,8 +1810,29 @@ function toggleTeacherClass(teacherId, className) {
   navigate('uc-subject-detail');
 }
 
-function toggleSubjectHead(teacherId) {
-  const t = data.users.find(u => u.id === teacherId);
+function showSubjectTeachers(headId) {
+  const head = data.users.find(u => u.id === headId);
+  if (!head) return;
+  const teachers = data.users.filter(u => u.role === 'teacher' && u.subject === head.subject);
+  document.getElementById('modal-body').innerHTML = `
+    <h3 style="font-size:18px;font-weight:900;margin-bottom:4px;">📚 ${head.subject||'—'}</h3>
+    <p style="font-size:13px;color:#6b7280;margin-bottom:16px;">⭐ Ахлагч: ${head.name}</p>
+    <p style="font-size:14px;font-weight:800;margin-bottom:10px;">Багш нар (${teachers.length})</p>
+    ${teachers.length === 0 ? '<p style="text-align:center;padding:20px;color:#9ca3af;">Энэ судлагдахуунд багш бүртгэлгүй</p>' :
+      teachers.map(t => `
+        <div style="display:flex;align-items:center;gap:10px;padding:12px;border:1px solid #e5e7eb;border-radius:12px;margin-bottom:8px;">
+          <div style="width:38px;height:38px;background:${t.isSubjectHead?'#fef9c3':'#eff6ff'};border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;">${t.isSubjectHead?'⭐':'👩‍🏫'}</div>
+          <div>
+            <div style="font-weight:800;font-size:14px;">${t.name}</div>
+            <div style="font-size:12px;color:#6b7280;">${t.regNumber}${t.isSubjectHead?' • Ахлагч':''}</div>
+          </div>
+        </div>`).join('')}
+    <button onclick="closeModal()" class="btn-primary btn-gray" style="margin-top:8px;">Хаах</button>`;
+  document.getElementById('modal').classList.remove('hidden');
+}
+
+function toggleSubjectHead(id) {
+  const t = data.users.find(u => u.id === id);
   if (!t) return;
   t.isSubjectHead = !t.isSubjectHead;
   logActivity('Ахлагч тохируулав', `${t.name} → ${t.isSubjectHead?'Ахлагч болов':'Ахлагч болиов'}`);
