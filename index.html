@@ -539,6 +539,7 @@ const DEFAULT_DATA = {
   activityLog: [],
   posters: [],
   sentAnalyses: [],
+  solutionImages: [],
   subjects: [
     { id: 1, name: 'Математик', color: '#3b82f6', icon: '📐' },
     { id: 2, name: 'Монгол хэл', color: '#10b981', icon: '📖' }
@@ -588,6 +589,7 @@ async function saveToCloud() {
       subjects: data.subjects || [],
       posters: (data.posters || []).map(p => ({...p, imageData: ''})), // зураг хасна (том)
       sentAnalyses: data.sentAnalyses || [],
+      solutionImagesMeta: (data.solutionImages || []).map(s => ({...s, imageData: ''})), // зураг хасна
       activityLog: (data.activityLog || []).slice(0, 200),
       updatedAt: new Date().toISOString()
     };
@@ -942,7 +944,27 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateSyncStatus('offline');
   // Сануулах сонгосон бол автоматаар нэвтэрнэ
   const _rem = localStorage.getItem('school87_remember');
-  if (_rem && data.currentUser) setTimeout(() => showApp(), 100);
+  const _creds = loadCredentials();
+  if (_rem && _creds && data.users) {
+    const savedUser = data.users.find(u => u.regNumber === _creds.reg && u.password === _creds.pwd);
+    if (savedUser) {
+      data.currentUser = savedUser;
+      // Нэвтрэх хуудсанд утга бөглөх (харагдуулах)
+      if (_creds.tab === 'teacher') {
+        document.getElementById('teacher-username').value = _creds.reg;
+        document.getElementById('teacher-password').value = _creds.pwd;
+        const cb = document.getElementById('teacher-remember');
+        if (cb) cb.checked = true;
+      } else {
+        switchLoginTab('student');
+        document.getElementById('student-username').value = _creds.reg;
+        document.getElementById('student-password').value = _creds.pwd;
+        const cb = document.getElementById('student-remember');
+        if (cb) cb.checked = true;
+      }
+      setTimeout(() => showApp(), 150);
+    }
+  }
   initData();
 });
 
@@ -962,6 +984,18 @@ function handleLogin() {
   if (currentLoginTab === 'teacher') handleTeacherLogin();
   else handleStudentLogin();
 }
+const SAVED_CREDS_KEY = 'school87_saved_creds_v1';
+
+function saveCredentials(reg, pwd, tab) {
+  try { localStorage.setItem(SAVED_CREDS_KEY, JSON.stringify({ reg, pwd, tab })); } catch {}
+}
+function loadCredentials() {
+  try { const s = localStorage.getItem(SAVED_CREDS_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
+}
+function clearCredentials() {
+  try { localStorage.removeItem(SAVED_CREDS_KEY); localStorage.removeItem('school87_remember'); } catch {}
+}
+
 function handleTeacherLogin() {
   const username = (document.getElementById('teacher-username').value || '').trim();
   const pwd = (document.getElementById('teacher-password').value || '').trim();
@@ -971,7 +1005,12 @@ function handleTeacherLogin() {
   if (!user) { errBox.textContent = 'Нэвтрэх нэр эсвэл нууц үг буруу байна!'; errBox.classList.remove('hidden'); return; }
   errBox.classList.add('hidden');
   const _tr = document.getElementById('teacher-remember');
-  if (_tr && _tr.checked) { localStorage.setItem('school87_remember','1'); } else { localStorage.removeItem('school87_remember'); }
+  if (_tr && _tr.checked) {
+    saveCredentials(username, pwd, 'teacher');
+    localStorage.setItem('school87_remember','1');
+  } else {
+    clearCredentials();
+  }
   data.currentUser = user;
   logActivity('Нэвтрэлт', `${user.role === 'admin' ? 'Админ' : 'Багш'} нэвтэрлээ`);
   saveData();
@@ -987,7 +1026,12 @@ function handleStudentLogin() {
   if (!student) { errBox.textContent = 'Нэвтрэх код эсвэл нууц үг буруу байна!'; errBox.classList.remove('hidden'); return; }
   errBox.classList.add('hidden');
   const _sr = document.getElementById('student-remember');
-  if (_sr && _sr.checked) { localStorage.setItem('school87_remember','1'); } else { localStorage.removeItem('school87_remember'); }
+  if (_sr && _sr.checked) {
+    saveCredentials(reg, pwd, 'student');
+    localStorage.setItem('school87_remember','1');
+  } else {
+    clearCredentials();
+  }
   data.currentUser = student;
   logActivity('Нэвтрэлт', `Сурагч ${student.name} (${reg}) нэвтэрлээ`);
   saveData();
@@ -996,7 +1040,7 @@ function handleStudentLogin() {
 function logout() {
   if (data.currentUser) logActivity('Гарах', `${data.currentUser.name} системээс гарлаа`);
   data.currentUser = null;
-  localStorage.removeItem('school87_remember');
+  clearCredentials();
   saveData();
   document.getElementById('main-app').classList.add('hidden');
   document.getElementById('login-page').style.display = '';
@@ -1210,6 +1254,27 @@ function renderAdminDashboard() {
         </div>
       `).join('')}
     </div>` : ''}
+
+    ${(function() {
+      const sols = (data.solutionImages||[]);
+      if (sols.length === 0) return '';
+      const recent = [...sols].reverse().slice(0,5);
+      return `<p class="section-title">📸 Ирсэн бодолтууд <span style="background:#ef4444;color:white;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:4px;">${sols.length}</span></p>
+      <div style="margin-bottom:16px;">
+        ${recent.map(s => `
+          <div class="card" style="padding:12px;margin-bottom:8px;cursor:pointer;display:flex;align-items:center;gap:10px;" onclick="showStudentSolutionModal(${s.studentId}, ${s.examId})">
+            <div style="width:44px;height:44px;border-radius:10px;overflow:hidden;flex-shrink:0;background:#f1f5f9;">
+              ${s.imageData ? `<img src="${s.imageData}" style="width:100%;height:100%;object-fit:cover;">` : '<div style="font-size:24px;text-align:center;line-height:44px;">📷</div>'}
+            </div>
+            <div style="flex:1;">
+              <div style="font-weight:800;font-size:13px;">${s.studentName}</div>
+              <div style="font-size:11px;color:#6b7280;">${s.examTitle}</div>
+              <div style="font-size:10px;color:#9ca3af;">${s.sentAt}</div>
+            </div>
+            <span style="color:#3b82f6;font-size:12px;font-weight:700;">Харах →</span>
+          </div>`).join('')}
+      </div>`;
+    })()}
 
     <p class="section-title">📚 Сорилын жагсаалт</p>
     <div>
@@ -1702,12 +1767,21 @@ function renderUCClassDetail() {
     h += '<p style="text-align:center;padding:20px;color:#9ca3af;">Сурагч байхгүй</p>';
   } else {
     studs.forEach(function(u, i) {
-      h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #f1f5f9;">';
+      var mySubs = data.submissions.filter(function(s){ return s.studentId === u.id; });
+      var lastSub = mySubs.length > 0 ? mySubs[mySubs.length - 1] : null;
+      var hasSol = (data.solutionImages||[]).some(function(s){ return s.studentId === u.id; });
+      var lvl = lastSub ? getLevelFromPct(lastSub.percentage) : '';
+      var lvlColor = lastSub ? getLevelColor(lastSub.percentage) : '#9ca3af';
+      h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #f1f5f9;cursor:pointer;" onclick="showStudentDetailModal(' + u.id + ')">';
       h += '<div style="display:flex;align-items:center;gap:10px;">';
       h += '<span style="width:24px;height:24px;background:#f1f5f9;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#6b7280;flex-shrink:0;">' + (i+1) + '</span>';
       h += '<div><div style="font-weight:800;font-size:13px;">' + u.name + '</div>';
       h += '<div style="font-size:11px;color:#6b7280;font-family:monospace;">' + u.regNumber + '</div></div></div>';
-      if (canManage) h += '<button onclick="removeStudentFromClass(' + u.id + ')" style="background:#fef2f2;color:#dc2626;border:none;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">🗑️</button>';
+      h += '<div style="display:flex;align-items:center;gap:6px;">';
+      if (lastSub) h += '<span style="font-size:12px;font-weight:800;color:' + lvlColor + ';">' + lastSub.percentage + '% <span style="font-size:10px;background:#f1f5f9;padding:1px 5px;border-radius:5px;">' + lvl + '</span></span>';
+      if (hasSol) h += '<span style="font-size:14px;" title="Бодолт ирсэн">📸</span>';
+      if (canManage) h += '<button onclick="event.stopPropagation();removeStudentFromClass(' + u.id + ')" style="background:#fef2f2;color:#dc2626;border:none;border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;">🗑️</button>';
+      h += '</div>';
       h += '</div>';
     });
   }
@@ -2725,26 +2799,35 @@ function renderResults() {
   const sub = window.lastSubmission;
   if (!sub) return renderStudentHome();
   const exam = data.exams.find(e => e.id === sub.examId);
+  const lvl = getLevelFromPct(sub.percentage);
+  const lvlColor = getLevelColor(sub.percentage);
+  const lvlBg = getLevelBg(sub.percentage);
   return `
     <div style="background:${sub.passed?'linear-gradient(135deg,#10b981,#059669)':'linear-gradient(135deg,#ef4444,#dc2626)'};border-radius:20px;padding:24px;margin-bottom:16px;text-align:center;color:white;">
       <div style="font-size:60px;margin-bottom:12px;">${sub.passed ? '🎉' : '😢'}</div>
       <h2 style="font-size:24px;font-weight:900;margin:0 0 6px;">${sub.passed ? 'Баяр хүргэе! Тэнцлээ!' : 'Уучлаарай, унасан байна'}</h2>
       <p style="opacity:0.85;margin:0;font-size:13px;">${exam.title}</p>
+      <div style="display:inline-block;background:rgba(255,255,255,0.25);border-radius:12px;padding:6px 18px;margin-top:10px;font-weight:900;font-size:16px;">${lvl} түвшин</div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
-      <div style="background:white;border-radius:16px;padding:14px;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,0.07);">
-        <div style="font-size:22px;font-weight:900;color:#1d4ed8;">${sub.score}/${exam.totalPoints}</div>
-        <div style="font-size:11px;color:#6b7280;">Авсан оноо</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:16px;">
+      <div style="background:white;border-radius:16px;padding:12px;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,0.07);">
+        <div style="font-size:18px;font-weight:900;color:#1d4ed8;">${sub.score}<span style="font-size:12px;color:#9ca3af;">/${exam.totalPoints}</span></div>
+        <div style="font-size:10px;color:#6b7280;">Авсан оноо</div>
       </div>
-      <div style="background:white;border-radius:16px;padding:14px;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,0.07);">
-        <div style="font-size:22px;font-weight:900;color:#6d28d9;">${sub.percentage}%</div>
-        <div style="font-size:11px;color:#6b7280;">Хувь</div>
+      <div style="background:white;border-radius:16px;padding:12px;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,0.07);">
+        <div style="font-size:18px;font-weight:900;color:#6d28d9;">${sub.percentage}%</div>
+        <div style="font-size:10px;color:#6b7280;">Хувь</div>
       </div>
-      <div style="background:white;border-radius:16px;padding:14px;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,0.07);">
-        <div style="font-size:22px;font-weight:900;color:#166534;">${sub.duration}</div>
-        <div style="font-size:11px;color:#6b7280;">минут</div>
+      <div style="background:${lvlBg};border-radius:16px;padding:12px;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,0.07);">
+        <div style="font-size:18px;font-weight:900;color:${lvlColor};">${lvl}</div>
+        <div style="font-size:10px;color:#6b7280;">Түвшин</div>
+      </div>
+      <div style="background:white;border-radius:16px;padding:12px;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,0.07);">
+        <div style="font-size:18px;font-weight:900;color:#166534;">${sub.duration}</div>
+        <div style="font-size:10px;color:#6b7280;">минут</div>
       </div>
     </div>
+    <button onclick="showSendSolutionModal(${exam.id})" class="btn-primary btn-orange" style="margin-bottom:14px;">📸 Бодолтоо багшид илгээх</button>
     <p class="section-title">📝 Асуулт бүрийн хариулт</p>
     <div>
       ${exam.questions.map((q, i) => {
@@ -2785,26 +2868,100 @@ function renderMyResults() {
       </div>` :
       mySubmissions.map(s => {
         const exam = data.exams.find(e => e.id === s.examId);
+        const lvl = getLevelFromPct(s.percentage);
+        const lvlColor = getLevelColor(s.percentage);
+        const lvlBg = getLevelBg(s.percentage);
         return `
-          <div class="card" style="padding:16px;margin-bottom:10px;">
+          <div class="card" style="padding:16px;margin-bottom:10px;cursor:pointer;" onclick="showMyResultDetail(${s.id})">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
               <div style="flex:1;padding-right:10px;">
                 <div style="font-weight:900;font-size:14px;margin-bottom:4px;">${exam ? exam.title : 'Устгагдсан сорил'}</div>
                 <div style="font-size:12px;color:#6b7280;">📅 ${s.submittedAt}</div>
               </div>
               <div style="text-align:right;">
-                <div style="font-weight:900;font-size:22px;color:${s.passed?'#166534':'#991b1b'};">${s.percentage}%</div>
+                <div style="font-weight:900;font-size:22px;color:${lvlColor};">${s.percentage}%</div>
                 <div style="font-size:11px;color:#9ca3af;">${s.score}/${exam?exam.totalPoints:'?'}</div>
               </div>
             </div>
-            <div style="background:${s.passed?'#f0fdf4':'#fef2f2'};border-radius:10px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;">
-              <span style="font-weight:700;font-size:13px;color:${s.passed?'#166534':'#991b1b'};">${s.passed?'✅ Тэнцсэн':'❌ Унасан'}</span>
-              <div class="result-bar-bg" style="width:120px;margin:0;">
-                <div class="result-bar-fill" style="width:${s.percentage}%;background:${s.passed?'#10b981':'#ef4444'};"></div>
+            <div style="background:${lvlBg};border-radius:10px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-weight:700;font-size:13px;color:${lvlColor};">${s.passed?'✅ Тэнцсэн':'❌ Унасан'}</span>
+                <span style="font-weight:900;font-size:12px;background:white;padding:2px 8px;border-radius:8px;color:${lvlColor};">${lvl} түвшин</span>
               </div>
+              <span style="font-size:12px;color:#6b7280;">Дэлгэрэнгүй →</span>
             </div>
           </div>`;
       }).join('')}`;
+}
+
+function showMyResultDetail(submissionId) {
+  const s = data.submissions.find(x => x.id === submissionId);
+  if (!s) return;
+  const exam = data.exams.find(e => e.id === s.examId);
+  if (!exam) { alert('Сорилын мэдээлэл олдсонгүй'); return; }
+  const lvl = getLevelFromPct(s.percentage);
+  const lvlColor = getLevelColor(s.percentage);
+  document.getElementById('modal-body').innerHTML = `
+    <div style="margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div style="flex:1;padding-right:12px;">
+          <h3 style="font-size:15px;font-weight:900;margin:0 0 4px;line-height:1.3;">${exam.title}</h3>
+          <p style="font-size:11px;color:#9ca3af;margin:0;">${s.submittedAt}</p>
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div style="font-size:28px;font-weight:900;color:${lvlColor};line-height:1;">${s.percentage}%</div>
+          <div style="font-size:12px;font-weight:800;color:${lvlColor};">${lvl} түвшин</div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:12px;background:#f8fafc;border-radius:14px;padding:14px;margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div style="text-align:center;flex:1;">
+          <div style="font-weight:900;font-size:20px;color:#1d4ed8;">${s.score}<span style="font-size:13px;color:#9ca3af;">/${exam.totalPoints}</span></div>
+          <div style="font-size:11px;color:#6b7280;">Авсан оноо</div>
+        </div>
+        <div style="width:1px;height:36px;background:#e5e7eb;"></div>
+        <div style="text-align:center;flex:1;">
+          <div style="font-weight:900;font-size:20px;color:${lvlColor};">${s.percentage}%</div>
+          <div style="font-size:11px;color:#6b7280;">Хувь</div>
+        </div>
+        <div style="width:1px;height:36px;background:#e5e7eb;"></div>
+        <div style="text-align:center;flex:1;">
+          <div style="font-weight:900;font-size:20px;color:${lvlColor};">${lvl}</div>
+          <div style="font-size:11px;color:#6b7280;">Түвшин</div>
+        </div>
+        <div style="width:1px;height:36px;background:#e5e7eb;"></div>
+        <div style="text-align:center;flex:1;">
+          <div style="font-weight:900;font-size:20px;color:#166534;">${s.duration}</div>
+          <div style="font-size:11px;color:#6b7280;">мин</div>
+        </div>
+      </div>
+      <div style="background:${s.passed?'#dcfce7':'#fecaca'};border-radius:10px;padding:8px;text-align:center;font-weight:900;font-size:14px;color:${s.passed?'#166534':'#dc2626'};">${s.passed?'✅ Тэнцсэн':'❌ Унасан'}</div>
+    </div>
+    <p style="font-weight:900;font-size:14px;margin-bottom:8px;">📝 Асуулт бүрийн хариулт</p>
+    <div style="max-height:50vh;overflow-y:auto;">
+      ${exam.questions.map((q, i) => {
+        const myAns = s.answers ? s.answers[i] : undefined;
+        const correct = (q.type === 'multiple' && myAns === q.correctAnswer) || (q.type === 'truefalse' && myAns === q.correctAnswer);
+        return `<div style="border-radius:12px;padding:12px;margin-bottom:8px;border-left:4px solid ${correct?'#10b981':'#ef4444'};background:${correct?'#f0fdf4':'#fef2f2'};">
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+            <span style="font-size:12px;font-weight:800;color:#6b7280;">Асуулт ${i+1}</span>
+            <span style="font-weight:900;font-size:12px;color:${correct?'#10b981':'#ef4444'};">${correct?'✅ Зөв':'❌ Буруу'} +${correct?q.points:0}/${q.points}</span>
+          </div>
+          <p style="font-size:13px;font-weight:700;margin:0 0 8px;">${q.question}</p>
+          ${q.type === 'multiple' ? `<div style="display:flex;flex-direction:column;gap:3px;">
+            ${q.options.map((opt, idx) => `<div style="font-size:12px;padding:5px 8px;border-radius:7px;background:${idx===q.correctAnswer?'#dcfce7':idx===myAns&&!correct?'#fecaca':'transparent'};color:${idx===q.correctAnswer?'#166534':idx===myAns&&!correct?'#dc2626':'#6b7280'};font-weight:${idx===q.correctAnswer||idx===myAns?'700':'400'};">
+              ${['A','B','C','D'][idx]}. ${opt}${idx===q.correctAnswer?' ✓':''}${idx===myAns&&idx!==q.correctAnswer?' ← Таны':''}
+            </div>`).join('')}
+          </div>` : `<div style="font-size:12px;color:#6b7280;">Зөв: <strong style="color:#166534;">${q.correctAnswer?'✓ Үнэн':'✗ Худал'}</strong></div>`}
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button onclick="closeModal();showSendSolutionModal(${exam.id})" class="btn-primary btn-orange" style="flex:1;padding:12px;font-size:13px;">📸 Бодолт илгээх</button>
+      <button onclick="closeModal()" class="btn-primary btn-gray" style="flex:1;padding:12px;">Хаах</button>
+    </div>`;
+  document.getElementById('modal').classList.remove('hidden');
 }
 
 
@@ -3058,12 +3215,18 @@ function renderAvailableExams() {
     <p class="section-title">✅ Өгсөн сорил (${done.length})</p>
     ${done.map(exam => {
       const sub = mySubmissions.find(s => s.examId === exam.id);
+      const lvl = getLevelFromPct(sub.percentage);
+      const lvlColor = getLevelColor(sub.percentage);
+      const lvlBg = getLevelBg(sub.percentage);
       return `
-        <div class="card" style="padding:14px;margin-bottom:8px;">
+        <div class="card" style="padding:14px;margin-bottom:8px;cursor:pointer;" onclick="showMyResultDetail(${sub.id})">
           <div style="font-weight:800;font-size:14px;margin-bottom:6px;">${exam.title}</div>
-          <div style="display:flex;align-items:center;justify-content:space-between;background:${sub.passed?'#f0fdf4':'#fef2f2'};border-radius:10px;padding:10px 12px;">
-            <span style="font-weight:700;color:${sub.passed?'#166534':'#991b1b'};">${sub.passed?'✅ Тэнцсэн':'❌ Унасан'}</span>
-            <span style="font-weight:900;font-size:18px;color:${sub.passed?'#166534':'#991b1b'};">${sub.percentage}%</span>
+          <div style="display:flex;align-items:center;justify-content:space-between;background:${lvlBg};border-radius:10px;padding:10px 12px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-weight:700;color:${lvlColor};">${sub.passed?'✅ Тэнцсэн':'❌ Унасан'}</span>
+              <span style="font-size:11px;font-weight:800;background:white;padding:2px 7px;border-radius:7px;color:${lvlColor};">${lvl}</span>
+            </div>
+            <span style="font-weight:900;font-size:18px;color:${lvlColor};">${sub.percentage}%</span>
           </div>
         </div>`;
     }).join('')}`;
@@ -3287,6 +3450,140 @@ function renderStudentHome() {
 // ============ MODAL ============
 function closeModal() { document.getElementById('modal').classList.add('hidden'); }
 function closeModalOnOverlay(e) { if (e.target.id === 'modal') closeModal(); }
+
+// ============ ТҮВШИН ТООЦООЛОХ ============
+function getLevelFromPct(pct) {
+  if (pct >= 90) return 'VIII';
+  if (pct >= 80) return 'VII';
+  if (pct >= 70) return 'VI';
+  if (pct >= 60) return 'V';
+  if (pct >= 50) return 'IV';
+  if (pct >= 40) return 'III';
+  if (pct >= 30) return 'II';
+  return 'I';
+}
+function getLevelColor(pct) {
+  if (pct >= 70) return '#166534';
+  if (pct >= 50) return '#92400e';
+  return '#991b1b';
+}
+function getLevelBg(pct) {
+  if (pct >= 70) return '#dcfce7';
+  if (pct >= 50) return '#fef9c3';
+  return '#fef2f2';
+}
+
+// ============ БОДОЛТЫН ЗУРАГ ИЛГЭЭХ ============
+let solutionImageData = '';
+function showSendSolutionModal(examId) {
+  const exam = data.exams.find(e => e.id === examId);
+  if (!exam) return;
+  solutionImageData = '';
+  document.getElementById('modal-body').innerHTML = `
+    <h3 style="font-size:18px;font-weight:900;margin-bottom:8px;">📸 Бодолт илгээх</h3>
+    <p style="font-size:13px;color:#6b7280;margin-bottom:14px;">"${exam.title}" сорилын бодолтоо зурагт авч багшид илгээ.</p>
+    <label style="display:block;border:2px dashed #cbd5e1;border-radius:14px;padding:20px;text-align:center;cursor:pointer;margin-bottom:12px;background:#f8fafc;">
+      <input type="file" accept="image/*" capture="environment" onchange="previewSolutionImg(event)" style="display:none;">
+      <div id="sol-img-preview" style="font-size:36px;">📷</div>
+      <div style="font-weight:700;color:#374151;margin-top:6px;font-size:13px;">Зураг сонгох / авах</div>
+    </label>
+    <div style="display:flex;gap:8px;">
+      <button onclick="confirmSendSolution(${examId})" class="btn-primary btn-green" style="flex:1;">✉️ Илгээх</button>
+      <button onclick="closeModal()" class="btn-primary btn-gray" style="flex:1;">Цуцлах</button>
+    </div>`;
+  document.getElementById('modal').classList.remove('hidden');
+}
+
+function previewSolutionImg(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    solutionImageData = e.target.result;
+    document.getElementById('sol-img-preview').innerHTML = `<img src="${solutionImageData}" style="max-width:100%;max-height:200px;border-radius:10px;object-fit:contain;">`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function confirmSendSolution(examId) {
+  if (!solutionImageData) { alert('Зураг сонгоно уу!'); return; }
+  const exam = data.exams.find(e => e.id === examId);
+  const user = data.currentUser;
+  if (!data.solutionImages) data.solutionImages = [];
+  data.solutionImages.push({
+    id: Date.now(), examId, examTitle: exam ? exam.title : '?',
+    studentId: user.id, studentName: user.name, studentReg: user.regNumber,
+    grade: user.grade, imageData: solutionImageData,
+    sentAt: new Date().toLocaleString('mn-MN')
+  });
+  logActivity('Бодолт илгээв', `"${exam ? exam.title : ''}" → ${user.name}`);
+  saveData();
+  closeModal();
+  alert('✅ Бодолт амжилттай илгээгдлээ!');
+}
+
+// ============ БАГШ: СУРАГЧИЙН БОДОЛТ ХАРАХ ============
+function showStudentSolutionModal(studentId, examId) {
+  const student = data.users.find(u => u.id === studentId);
+  const exam = data.exams ? data.exams.find(e => e.id === examId) : null;
+  const solutions = (data.solutionImages || []).filter(s => s.studentId === studentId && (!examId || s.examId === examId));
+  document.getElementById('modal-body').innerHTML = `
+    <h3 style="font-size:18px;font-weight:900;margin-bottom:4px;">📸 Бодолтын зураг</h3>
+    <p style="font-size:13px;color:#6b7280;margin-bottom:14px;">${student ? student.name : '?'}${exam ? ' — ' + exam.title : ''}</p>
+    ${solutions.length === 0
+      ? '<div style="text-align:center;padding:30px;color:#9ca3af;"><div style="font-size:40px;">📭</div><p style="font-weight:700;">Бодолт ирээгүй байна</p></div>'
+      : solutions.map(s => `
+        <div style="margin-bottom:14px;">
+          <div style="font-size:11px;color:#6b7280;margin-bottom:6px;">📅 ${s.sentAt} — ${s.examTitle}</div>
+          <img src="${s.imageData}" style="width:100%;border-radius:12px;object-fit:contain;max-height:400px;">
+        </div>`).join('')}
+    <button onclick="closeModal()" class="btn-primary btn-gray" style="margin-top:8px;">Хаах</button>`;
+  document.getElementById('modal').classList.remove('hidden');
+}
+
+// ============ БАГШ: СУРАГЧИЙН ДЭЛГЭРЭНГҮЙ (анги дотор) ============
+function showStudentDetailModal(studentId) {
+  const student = data.users.find(u => u.id === studentId);
+  if (!student) return;
+  const mySubs = data.submissions.filter(s => s.studentId === studentId);
+  const mySolutions = (data.solutionImages || []).filter(s => s.studentId === studentId);
+  document.getElementById('modal-body').innerHTML = `
+    <h3 style="font-size:18px;font-weight:900;margin-bottom:4px;">👨‍🎓 ${student.name}</h3>
+    <p style="font-size:12px;color:#6b7280;font-family:monospace;margin-bottom:14px;">${student.regNumber} • ${student.grade || ''}</p>
+    <p style="font-size:14px;font-weight:900;margin-bottom:8px;">📊 Шалгалтын дүн (${mySubs.length})</p>
+    ${mySubs.length === 0
+      ? '<p style="color:#9ca3af;font-size:13px;margin-bottom:14px;">Шалгалт өгөөгүй байна</p>'
+      : `<div style="margin-bottom:14px;">
+          ${mySubs.map(s => {
+            const ex = data.exams.find(e => e.id === s.examId);
+            const lvl = getLevelFromPct(s.percentage);
+            const hasSol = mySolutions.some(sol => sol.examId === s.examId);
+            return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:${getLevelBg(s.percentage)};border-radius:10px;margin-bottom:6px;">
+              <div>
+                <div style="font-weight:800;font-size:13px;">${ex ? ex.title : 'Устгагдсан сорил'}</div>
+                <div style="font-size:11px;color:#6b7280;">${s.score}/${ex ? ex.totalPoints : '?'} оноо • ${s.submittedAt}</div>
+              </div>
+              <div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+                <div style="font-weight:900;font-size:16px;color:${getLevelColor(s.percentage)};">${s.percentage}%</div>
+                <div style="font-size:11px;font-weight:800;background:white;padding:2px 8px;border-radius:8px;color:${getLevelColor(s.percentage)};">${lvl} түвшин</div>
+                ${hasSol ? `<button onclick="showStudentSolutionModal(${studentId}, ${s.examId})" style="font-size:10px;padding:3px 8px;background:#eff6ff;color:#1d4ed8;border:none;border-radius:6px;cursor:pointer;font-weight:700;">📸 Бодолт</button>` : ''}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>`}
+    <p style="font-size:14px;font-weight:900;margin-bottom:8px;">📸 Бодолтын зурагнууд (${mySolutions.length})</p>
+    ${mySolutions.length === 0
+      ? '<p style="color:#9ca3af;font-size:13px;margin-bottom:14px;">Бодолт ирээгүй байна</p>'
+      : `<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">
+          ${mySolutions.map(s => `
+            <div>
+              <div style="font-size:11px;color:#6b7280;margin-bottom:4px;">📅 ${s.sentAt} — ${s.examTitle}</div>
+              <img src="${s.imageData}" style="width:100%;border-radius:12px;object-fit:contain;max-height:300px;">
+            </div>`).join('')}
+        </div>`}
+    <button onclick="closeModal()" class="btn-primary btn-gray">Хаах</button>`;
+  document.getElementById('modal').classList.remove('hidden');
+}
 </script>
 </body>
 </html>
