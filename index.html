@@ -333,8 +333,79 @@
       <button type="button" onclick="showAnnouncementsModal()" style="display:block;width:100%;padding:14px;background:#fce7f3;color:#be185d;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer;">📢 САНАМЖ ХАРАХ</button>
     </div>
   </div>
-  <p style="color:rgba(255,255,255,0.5);text-align:center;font-size:12px;margin-top:20px;">© 2026 87 дугаар сургууль</p>
+  <!-- ===== APP INSTALL SECTION ===== -->
+  <div style="margin-top:16px;">
+
+    <!-- iOS суулгах -->
+    <div id="install-ios" class="hidden" style="background:rgba(255,255,255,0.12);border:1.5px solid rgba(255,255,255,0.25);border-radius:20px;padding:18px;text-align:center;margin-bottom:10px;">
+      <div style="font-size:28px;margin-bottom:6px;">📱</div>
+      <div style="color:white;font-weight:900;font-size:15px;margin-bottom:4px;">iPhone апп суулгах</div>
+      <div style="color:rgba(255,255,255,0.7);font-size:12px;margin-bottom:14px;">Safari браузераар нэг товшилтоор суулгана</div>
+      <button onclick="installIOS()" style="display:block;width:100%;padding:14px;background:white;color:#1d4ed8;border:none;border-radius:14px;font-size:15px;font-weight:900;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,0.2);">
+        ⬇️ iOS апп суулгах (IPA)
+      </button>
+      <p id="ios-status" style="color:rgba(255,255,255,0.8);font-size:11px;margin-top:10px;margin-bottom:0;line-height:1.5;"></p>
+    </div>
+
+    <!-- Android суулгах -->
+    <div id="install-android" class="hidden" style="background:rgba(255,255,255,0.12);border:1.5px solid rgba(255,255,255,0.25);border-radius:20px;padding:18px;text-align:center;margin-bottom:10px;">
+      <div style="font-size:28px;margin-bottom:6px;">🤖</div>
+      <div style="color:white;font-weight:900;font-size:15px;margin-bottom:4px;">Android апп суулгах</div>
+      <div style="color:rgba(255,255,255,0.7);font-size:12px;margin-bottom:14px;">APK файл татаж суулгана</div>
+      <button onclick="installAndroid()" style="display:block;width:100%;padding:14px;background:white;color:#059669;border:none;border-radius:14px;font-size:15px;font-weight:900;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,0.2);">
+        ⬇️ Android апп татах (APK)
+      </button>
+      <p id="android-status" style="color:rgba(255,255,255,0.8);font-size:11px;margin-top:10px;margin-bottom:0;line-height:1.5;"></p>
+    </div>
+
+  </div>
+
+  <p style="color:rgba(255,255,255,0.5);text-align:center;font-size:12px;margin-top:16px;">© 2026 87 дугаар сургууль</p>
 </div>
+
+<script>
+// ============ APP INSTALL ============
+const IOS_MANIFEST_URL = 'https://muugii9811.github.io/school87/manifest.plist';
+const ANDROID_APK_URL  = 'https://muugii9811.github.io/school87/school87.apk';
+
+(function detectDevice() {
+  const ua = navigator.userAgent || '';
+  if (/iPhone|iPad|iPod/i.test(ua)) {
+    document.getElementById('install-ios').classList.remove('hidden');
+  } else if (/Android/i.test(ua)) {
+    document.getElementById('install-android').classList.remove('hidden');
+  }
+})();
+
+function installIOS() {
+  const st = document.getElementById('ios-status');
+  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  if (!isSafari) {
+    st.innerHTML = '⚠️ Safari браузер ашиглана уу!<br>Chrome дээр ажиллахгүй.';
+    st.style.color = '#fbbf24';
+    return;
+  }
+  st.textContent = '⏳ Суулгаж байна...';
+  window.location.href = 'itms-services://?action=download-manifest&url=' + encodeURIComponent(IOS_MANIFEST_URL);
+  setTimeout(function() {
+    st.innerHTML = '✅ "Суулгах" товч дарна уу.<br>⚙️ Settings → General → VPN & Device Management → Trust';
+  }, 1500);
+}
+
+function installAndroid() {
+  const st = document.getElementById('android-status');
+  st.textContent = '⏳ Татаж байна...';
+  var a = document.createElement('a');
+  a.href = ANDROID_APK_URL;
+  a.download = 'school87.apk';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function() {
+    st.innerHTML = '✅ Татагдлаа! Файлын менежер → school87.apk → Суулгах<br>⚙️ Settings → Security → Unknown sources зөвшөөрнө үү';
+  }, 2000);
+}
+</script>
 
 <!-- =========== MAIN APP =========== -->
 <div id="main-app" class="hidden">
